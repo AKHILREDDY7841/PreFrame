@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preframe — Prompt 00 feasibility spike</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2343717F'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/comment.css" />
+    <script type="importmap">
+      {"imports":{"prosemirror-model":"/node_modules/prosemirror-model/dist/index.js","prosemirror-state":"/node_modules/prosemirror-state/dist/index.js","prosemirror-view":"/node_modules/prosemirror-view/dist/index.js","prosemirror-history":"/node_modules/prosemirror-history/dist/index.js","prosemirror-keymap":"/node_modules/prosemirror-keymap/dist/index.js","prosemirror-commands":"/node_modules/prosemirror-commands/dist/index.js","prosemirror-schema-basic":"/node_modules/prosemirror-schema-basic/dist/index.js","prosemirror-transform":"/node_modules/.pnpm/prosemirror-transform@1.12.1/node_modules/prosemirror-transform/dist/index.js","orderedmap":"/node_modules/.pnpm/orderedmap@2.1.1/node_modules/orderedmap/dist/index.js","rope-sequence":"/node_modules/.pnpm/rope-sequence@1.3.4/node_modules/rope-sequence/dist/index.js","w3c-keyname":"/node_modules/.pnpm/w3c-keyname@2.2.8/node_modules/w3c-keyname/index.js"}}
+    </script>
+  </head>
+  <body>
+    <header class="app-header"><div class="brand">Preframe <span>Phase 0</span></div><div id="save-state">Local feasibility prototype</div></header>
+    <main>
+      <aside class="navigator"><h2>Scenes</h2><ol id="scene-list"></ol><p class="quiet">Scene IDs stay stable when you move or rename a heading.</p></aside>
+      <section class="workspace">
+        <div class="toolbar" aria-label="Screenplay element controls">
+          <label>Element <select id="element-menu" aria-label="Change selected block element"></select></label>
+          <button id="undo" type="button">Undo</button><button id="redo" type="button">Redo</button>
+          <label class="shortcut">Shortcut <select id="shortcut-mode"><option value="ctrl">Ctrl + 1–9</option><option value="alt">Alt + Shift + 1–9</option></select></label>
+          <button id="comment" type="button">Comment on selection</button>
+          <button id="print" type="button">Print / Save PDF</button>
+        </div>
+        <div class="page-shell"><div class="page-number">1.</div><div id="editor" aria-label="Screenplay editor"></div></div>
+        <section class="compression" aria-labelledby="compression-title">
+          <h2 id="compression-title">Image compression benchmark</h2>
+          <p>Choose a device image to resize to 1600 px max and JPEG quality 0.78. This measures a local candidate, it does not set a product quota.</p>
+          <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp" />
+          <output id="benchmark-result">No source image selected.</output>
+        </section>
+      </section>
+      <aside class="comments"><h2>Comments</h2><label>New comment <textarea id="comment-text" placeholder="Select text, then add a note."></textarea></label><div id="comment-list" aria-live="polite"></div></aside>
+    </main>
+    <script type="module" src="/dist/app.js"></script>
+  </body>
+</html>
