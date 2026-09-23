@@ -1,11 +1,13 @@
-import playwright from "file:///C:/Users/pc/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.js";
+import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 
-const image = "C:/Users/pc/AppData/Local/Temp/codex-file-preview-h9te4z/WhatsApp Image 2026-09-22 at 12.03.46 PM.jpeg";
-const output = "C:/Users/pc/Documents/Codex/2026-09-22/referenced-chatgpt-conversation-this-is-an/outputs";
+const image = process.env.PREFRAME_BENCHMARK_IMAGE;
+if (!image) throw new Error("Set PREFRAME_BENCHMARK_IMAGE to a local JPEG, PNG, or WebP before running this proof.");
+const output = process.env.PREFRAME_PROOF_OUTPUT || resolve("work", "proof-output");
 await mkdir(output, { recursive: true });
-const browser = await playwright.chromium.launch({ headless: true, executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe" });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
