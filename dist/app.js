@@ -28,6 +28,9 @@ async function render() { const recovered = new URLSearchParams(location.search)
     render();
 } })); document.querySelector("#eye")?.addEventListener("click", () => { const warm = document.body.classList.toggle("eye-saver"); localStorage.setItem("preframe-eye-saver", String(warm)); document.querySelector("#eye").setAttribute("aria-pressed", String(warm)); }); if (localStorage.getItem("preframe-eye-saver") === "true")
     document.body.classList.add("eye-saver"); }
-function wire(p) { const input = document.querySelector("#project-title"), status = document.querySelector("#save-status"), q = new SyncQueue(null, (s) => status.textContent = { "saved-locally": "Saved locally", syncing: "Syncing", synced: "Synced", "sync-failed": "Sync failed", conflict: "Conflict" }[s]); input.addEventListener("input", () => { q.enqueue({ ...p, title: input.value }, p.revision); status.textContent = "Saved locally"; }); }
+function wire(p) { const input = document.querySelector("#project-title"), status = document.querySelector("#save-status"), q = new SyncQueue(null, (s) => status.textContent = { "saved-locally": "Saved locally", syncing: "Syncing", synced: "Synced", "sync-failed": "Sync failed", conflict: "Conflict" }[s]); let current = p; input.addEventListener("input", async () => { status.textContent = "Saving locally"; const result = await repo.saveProject({ ...current, title: input.value }, current.revision); if (result.kind !== "ok") {
+    status.textContent = result.kind === "conflict" ? "Conflict" : "Sync failed";
+    return;
+} current = result.value.value; q.enqueue(current, current.revision); status.textContent = "Saved locally"; }); }
 addEventListener("popstate", render);
 render();
