@@ -1,0 +1,7 @@
+const tools = new Set(["screenplay", "notes", "shots", "storyboards", "schedule", "calendar", "call-sheets", "locations", "members", "import"]);
+export function parseRoute(pathname = location.pathname) { const path = pathname.replace(/^\/PreFrame(?=\/|$)/, "") || "/"; const parts = path.split("/").filter(Boolean); if (!parts.length)
+    return { page: "landing" }; if (parts[0] === "auth")
+    return { page: "auth" }; if (parts[0] !== "app")
+    return { page: "not-found" }; if (parts.length === 1)
+    return { page: "home" }; if (parts[1] === "projects" && parts[2])
+    return parts[3] && tools.has(parts[3]) ? { page: "workspace", projectId: parts[2], tool: parts[3] } : parts.length === 3 ? { page: "project", projectId: parts[2] } : { page: "not-found" }; return { page: "not-found" }; }

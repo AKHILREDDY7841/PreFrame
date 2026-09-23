@@ -1,114 +1,18 @@
-import { Schema, NodeSpec } from "prosemirror-model";
-import { EditorState, Plugin, Transaction, TextSelection } from "prosemirror-state";
-import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
-import { history, undo, redo } from "prosemirror-history";
-import { keymap } from "prosemirror-keymap";
-import { baseKeymap } from "prosemirror-commands";
-import { elements, ElementKind, remapAnchor, Anchor } from "./model.js";
-
-type Comment = Anchor & { id: string; blockId: string; body: string; resolved: boolean };
-type TrMap = { map(pos: number, assoc?: number): number };
-const uid = () => crypto.randomUUID();
-const node = (id: string, text: string) => ({ id, text });
-const initial = [
-  ["act", node("block-act-001", "ACT ONE")],
-  ["sceneHeading", node("scene-7c2d", "INT. EDITING ROOM - NIGHT")],
-  ["action", node("block-action-001", "Rain ticks against the window. Maya studies the cut in silence.")],
-  ["character", node("block-char-001", "MAYA")],
-  ["dialogue", node("block-dialogue-001", "Let us keep the English line with తెలుగు together.")],
-  ["parenthetical", node("block-parenthetical-001", "(quietly)")],
-  ["dialogue", node("block-dialogue-002", "مرحبا بالعالم — 日本語入力 — 안녕하세요")],
-  ["shot", node("block-shot-001", "CLOSE ON: the timeline cursor")],
-  ["transition", node("block-transition-001", "CUT TO:")],
-  ["text", node("block-text-001", "Production note: verify the exported text is selectable.")]
-] as const;
-
-const blockSpec = (kind: ElementKind): NodeSpec => ({
-  content: "inline*", group: "block", attrs: { id: { default: "" } },
-  toDOM: (n) => ["div", { class: `element element-${kind}`, "data-element": kind, "data-block-id": n.attrs.id }, 0],
-  parseDOM: [{ tag: `div[data-element='${kind}']`, getAttrs: (dom) => ({ id: (dom as HTMLElement).dataset.blockId || uid() }) }]
-});
-const nodes: Record<string, NodeSpec> = { doc: { content: "block+" }, text: { group: "inline" } };
-for (const { kind } of elements) nodes[kind === "text" ? "generalText" : kind] = blockSpec(kind);
-const schema = new Schema({ nodes });
-const nodeName = (kind: ElementKind) => kind === "text" ? "generalText" : kind;
-const doc = schema.node("doc", null, initial.map(([kind, value]) => schema.node(nodeName(kind), { id: value.id }, value.text ? schema.text(value.text) : undefined)));
-
-let comments: Comment[] = [];
-let shortcutMode: "ctrl" | "alt" = "ctrl";
-const sceneList = document.querySelector<HTMLOListElement>("#scene-list")!;
-const commentList = document.querySelector<HTMLDivElement>("#comment-list")!;
-const menu = document.querySelector<HTMLSelectElement>("#element-menu")!;
-const commentText = document.querySelector<HTMLTextAreaElement>("#comment-text")!;
-const mode = document.querySelector<HTMLSelectElement>("#shortcut-mode")!;
-for (const [index, item] of elements.entries()) menu.add(new Option(`${index + 1}. ${item.label}`, item.kind));
-
-function textAt(state: EditorState, from: number, to: number) { return state.doc.textBetween(from, to, " "); }
-function renderComments() {
-  commentList.replaceChildren(...comments.map((comment) => {
-    const card = document.createElement("article"); card.className = `comment ${comment.orphaned ? "orphaned" : ""}`;
-    card.innerHTML = `<p><mark>${comment.orphaned ? "Orphaned anchor" : comment.quote}</mark></p><p>${comment.body}</p><small>${comment.blockId}</small><button type="button">${comment.resolved ? "Reopen" : "Resolve"}</button>`;
-    card.querySelector("button")!.onclick = () => { comment.resolved = !comment.resolved; renderComments(); };
-    return card;
-  }));
-  if (!comments.length) commentList.textContent = "No comments yet.";
-}
-function renderNavigator(state: EditorState) {
-  sceneList.replaceChildren();
-  state.doc.descendants((n, pos) => {
-    if (n.type.name !== "sceneHeading") return;
-    const item = document.createElement("li"); const button = document.createElement("button");
-    button.type = "button"; button.textContent = n.textContent; button.title = `Stable ID: ${n.attrs.id}`;
-    button.onclick = () => { view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos + 1)))); view.focus(); };
-    item.append(button); sceneList.append(item);
-  });
-}
-function shortcutBindings() {
-  const result: Record<string, () => boolean> = {};
-  elements.forEach(({ kind }, index) => {
-    const key = shortcutMode === "ctrl" ? `Ctrl-${index + 1}` : `Alt-Shift-${index + 1}`;
-    result[key] = () => changeBlock(kind);
-  });
-  return result;
-}
-function changeBlock(kind: ElementKind) {
-  const { state } = view; const $from = state.selection.$from; const old = $from.parent;
-  if (!old.isBlock) return false;
-  const pos = $from.before($from.depth);
-  view.dispatch(state.tr.setNodeMarkup(pos, schema.nodes[nodeName(kind)], { ...old.attrs, id: old.attrs.id || uid() }));
-  return true;
-}
-const commentPlugin = new Plugin({
-  props: { decorations(state) { return DecorationSet.create(state.doc, comments.filter((comment) => !comment.orphaned).map((comment) => Decoration.inline(comment.from, comment.to, { class: "comment-anchor" }))); } },
-  appendTransaction(transactions: readonly Transaction[], oldState, newState) {
-    let touched = false;
-    for (const tr of transactions) if (tr.docChanged) { comments = comments.map((c) => { const anchor = remapAnchor(c, tr.mapping as TrMap, (from, to) => textAt(newState, from, to)); return { ...c, ...anchor, blockId: newState.doc.resolve(anchor.from).parent.attrs.id || c.blockId }; }); touched = true; }
-    if (touched) renderComments();
-    return null;
-  }
-});
-const state = EditorState.create({ schema, doc, plugins: [history(), keymap(shortcutBindings()), keymap(baseKeymap), commentPlugin] });
-const view = new EditorView(document.querySelector("#editor"), { state, dispatchTransaction(tr) { view.updateState(view.state.apply(tr)); renderNavigator(view.state); } });
-renderNavigator(view.state); renderComments();
-
-menu.onchange = () => changeBlock(menu.value as ElementKind);
-mode.onchange = () => { shortcutMode = mode.value as "ctrl" | "alt"; view.setProps({ state: view.state.reconfigure({ plugins: [history(), keymap(shortcutBindings()), keymap(baseKeymap), commentPlugin] }) }); };
-document.querySelector<HTMLButtonElement>("#undo")!.onclick = () => undo(view.state, view.dispatch);
-document.querySelector<HTMLButtonElement>("#redo")!.onclick = () => redo(view.state, view.dispatch);
-document.querySelector<HTMLButtonElement>("#comment")!.onclick = () => {
-  const { from, to } = view.state.selection; const quote = textAt(view.state, from, to);
-  if (!quote) { commentText.focus(); commentText.placeholder = "Select words in the screenplay first."; return; }
-  comments.push({ id: uid(), blockId: view.state.selection.$from.parent.attrs.id, from, to, quote, body: commentText.value.trim() || "Review this passage.", resolved: false, orphaned: false }); commentText.value = ""; view.updateState(view.state); renderComments();
-};
-document.querySelector<HTMLButtonElement>("#print")!.onclick = () => window.print();
-
-document.querySelector<HTMLInputElement>("#image-input")!.onchange = async (event) => {
-  const input = event.currentTarget as HTMLInputElement; const file = (input.files || [])[0]; const output = document.querySelector<HTMLOutputElement>("#benchmark-result")!;
-  if (!file) return; const bitmap = await createImageBitmap(file); const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas"); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
-  const compressed = blob?.size || 0; const ratio = ((1 - compressed / file.size) * 100).toFixed(1);
-  const fits = Math.floor((6 * 1024 * 1024) / Math.max(compressed, 1));
-  output.textContent = `${file.name}: ${(file.size / 1024).toFixed(1)} KB → ${(compressed / 1024).toFixed(1)} KB (${ratio}% smaller), ${canvas.width}×${canvas.height}; about ${fits} comparable images fit in 6 MB.`;
-};
+import { LocalProjectRepository } from "./local-repository.js";
+import { parseRoute } from "./routes.js";
+import type { Project, SyncState } from "./domain.js";
+import { SyncQueue } from "./sync.js";
+const repo = new LocalProjectRepository(); const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
+const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
+const esc=(v:string)=>v.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]!)); const link=(p:string,l:string,c="")=>`<a class="${c}" href="${href(p)}" data-route>${l}</a>`;
+function logo(){return `<a class="logo" href="${href("/")}" data-route aria-label="Preframe home"><svg viewBox="0 0 52 36" aria-hidden="true"><path d="M5 6h42v24H5zM13 1v34M39 1v34"/></svg><span>Preframe</span></a>`;}
+function shell(content:string,signed=false){return `<header class="topbar">${logo()}<nav aria-label="Primary">${signed?`${link("/app","Home")} ${link("/app","Projects")} <button id="eye" type="button" aria-pressed="false">Eye-saver</button><button class="avatar" type="button" aria-label="Local preview account">A <small>Free</small></button>`:`${link("/#features","Features")} ${link("/#pricing","Pricing")} ${link("/#about","About")} ${link("/auth","Log in","plain-link")} ${link("/auth","Get started","button")}`}</nav></header>${content}`;}
+function landing(){return shell(`<main class="landing"><section class="hero"><p class="eyebrow">PREPRODUCTION, IN FOCUS</p><h1>Before the<br>camera rolls.</h1><p class="lede">Preframe brings screenplay, visual planning, and production scheduling into one calm workspace.</p><div class="actions">${link("/auth","Start for free","button")}<a class="plain-link" href="#features">Explore features</a></div><div class="film-frames" aria-hidden="true"><i></i><i></i><i></i></div></section><section id="features" class="public-section"><p class="eyebrow">ONE PROJECT, CONNECTED WORK</p><h2>Write it. See it. Plan it.</h2><div class="three"><article><b>Write</b><p>Screenplay and notes stay connected to your production.</p></article><article><b>Visualize</b><p>Organize shot lists and storyboard frames around your scenes.</p></article><article><b>Plan</b><p>Shape schedules, calendar records, locations and call sheets.</p></article></div></section><section id="pricing" class="public-section quiet-section"><h2>Free to begin</h2><p>One active owned project and up to three accepted editors, including the owner. Premium is coming soon; no price or caps have been announced.</p></section><section id="about" class="public-section"><h2>Made for the work before production.</h2><p>Preframe is an early preproduction workspace. The tools shown in your project describe their current implementation status honestly.</p></section></main>`);}
+function auth(){return shell(`<main class="auth-page"><section><p class="eyebrow">PREFRAME ACCOUNT</p><h1>Continue with Google</h1><p>Google sign-in and cloud recovery are not configured in this deployment yet. No account is created by this preview.</p><button type="button" disabled>Continue with Google — setup required</button><p class="quiet">See <code>docs/SUPABASE_SETUP.md</code> in the repository to enable the real sign-in flow.</p>${link("/app","Open local foundation preview","plain-link")}</section></main>`);}
+function card(p:Project){return `<article class="project-card"><span class="sample-label">${p.sample?"Sample data":"Local project"}</span><h3>${esc(p.title)}</h3><p>Last updated ${new Date(p.updatedAt).toLocaleDateString()}</p>${link(`/app/projects/${p.id}`,"Open project","text-link")}</article>`;}
+async function home(){const identity=await repo.getIdentity(),projects=await repo.listProjects(),name=identity?.profile.displayName||"there";return shell(`<main class="app-shell"><aside class="side-nav" aria-label="App navigation">${link("/app","Home")} ${link("/app","Projects")}<span aria-disabled="true">Shared with me</span><span aria-disabled="true">Settings</span></aside><section class="home"><div class="cinema-banner"><p>Good morning, ${esc(name)}.</p><h1>Ideas look better in focus.</h1></div><div class="section-heading"><div><p class="eyebrow">YOUR PROJECT</p><h2>Projects</h2></div><button type="button" disabled>New Project</button></div><div class="project-grid">${projects.map(card).join("")}</div><p class="local-note">This sample is local preview data. Cloud sync requires Prompt 03 configuration.</p><section class="tool-section"><p class="eyebrow">TOOLS</p><h2>Choose a project workspace</h2><div class="tool-grid">${["Write|Screenplay & Notes|screenplay","Visualize|Shot Lists & Storyboards|shots","Plan|Schedule & Call Sheets|schedule","Import Script|Preview required before import|import"].map(x=>{const[g,l,t]=x.split("|");return `<article><b>${g}</b><p>${l}</p>${link(`/app/projects/${projects[0].id}/${t}`,"Open","text-link")}</article>`;}).join("")}</div></section><section class="upcoming"><h2>Upcoming schedule</h2><p>No upcoming schedule entries yet. Add production records when the schedule workspace is implemented.</p></section></section></main>`,true);}
+function dashboard(p:Project){const group=(name:string)=>`<section class="dashboard-group"><h2>${name}</h2><div class="module-grid">${tools.filter(([c])=>c===name).map(([,label,t])=>`<article><h3>${label}</h3><p>Empty workspace: this module has not been implemented yet.</p>${link(`/app/projects/${p.id}/${t}`,"Open workspace","text-link")}</article>`).join("")}</div></section>`;return shell(`<main class="app-shell"><aside class="side-nav">${link("/app","Back to home")}<span>${esc(p.title)}</span></aside><section class="project-page"><p class="sample-label">${p.sample?"Sample data — local-only preview":"Local-only project"}</p><h1>${esc(p.title)}</h1><p class="quiet">Project dashboard. The title editor demonstrates durable local writes; it is not cloud-synced.</p><label class="project-title">Project title <input id="project-title" value="${esc(p.title)}"></label><div id="save-status" role="status">Saved locally</div>${group("Write")}${group("Visualize")}${group("Plan")}</section></main>`,true);}
+function workspace(p:Project,t:string){const labels:Record<string,string>={screenplay:"Screenplay",notes:"Docs & Notes",shots:"Shot Lists",storyboards:"Storyboards",schedule:"Production Schedule",calendar:"Calendar","call-sheets":"Call Sheets",locations:"Locations",members:"Project collaborators",import:"Import Script"};const text=t==="import"?"No script format is supported in this release. Import validation and a non-destructive preview are scheduled before any content can be created.":"This full-page workspace is ready for navigation but has no production data or controls yet.";return shell(`<main class="workspace-page"><div class="workspace-head">${link(`/app/projects/${p.id}`,"← Back to project","plain-link")}<span class="project-chip">${esc(p.title)}</span></div><section class="empty-workspace"><p class="eyebrow">${t==="import"?"SAFE IMPORT GATE":"PROJECT WORKSPACE"}</p><h1>${labels[t]}</h1><p>${text}</p><p class="quiet">No project data is created, changed, or claimed as synced from this page.</p></section></main>`,true);}
+function missing(){return shell(`<main class="empty-workspace"><p class="eyebrow">404</p><h1>That page is out of frame.</h1><p>The route does not exist in this preview.</p>${link("/","Return to Preframe","button")}</main>`);}
+async function render(){const recovered=new URLSearchParams(location.search).get("r");const r=parseRoute(recovered||location.pathname);root.innerHTML=r.page==="landing"?landing():r.page==="auth"?auth():r.page==="home"?await home():r.page==="not-found"?missing():"";if(r.page==="project"||r.page==="workspace"){const p=r.projectId&&await repo.getProject(r.projectId);root.innerHTML=p?(r.page==="project"?dashboard(p):workspace(p,r.tool!)):shell(`<main class="empty-workspace"><h1>Project unavailable</h1><p>This project is missing locally or you do not have permission to open it.</p>${link("/app","Back to projects","button")}</main>`,true);if(p&&r.page==="project")wire(p);}document.querySelectorAll<HTMLAnchorElement>("[data-route]").forEach(a=>a.addEventListener("click",e=>{if(a.origin===location.origin){e.preventDefault();history.pushState({},"",a.href);render();}}));document.querySelector("#eye")?.addEventListener("click",()=>{const warm=document.body.classList.toggle("eye-saver");localStorage.setItem("preframe-eye-saver",String(warm));(document.querySelector("#eye") as HTMLButtonElement).setAttribute("aria-pressed",String(warm));});if(localStorage.getItem("preframe-eye-saver")==="true")document.body.classList.add("eye-saver");}
+function wire(p:Project){const input=document.querySelector<HTMLInputElement>("#project-title")!,status=document.querySelector("#save-status")!,q=new SyncQueue(null,(s:SyncState)=>status.textContent={"saved-locally":"Saved locally",syncing:"Syncing",synced:"Synced","sync-failed":"Sync failed",conflict:"Conflict"}[s]);input.addEventListener("input",()=>{q.enqueue({...p,title:input.value},p.revision);status.textContent="Saved locally";});}addEventListener("popstate",render);render();
