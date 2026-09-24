@@ -66,6 +66,10 @@ export class CloudProjectRepository implements ProjectRepository {
     if (error || !data) throw new Error(error?.message || "Could not create project");
     return data as string;
   }
+  async deleteProject(projectId: string): Promise<void> {
+    const { error } = await supabase.rpc("delete_project", { p_project: projectId });
+    if (error) throw new Error(error.message);
+  }
   async inviteEditor(projectId: string, email: string): Promise<void> {
     const { error } = await supabase.rpc("invite_editor", { p_project: projectId, p_email: email });
     if (error) throw new Error(error.message);

@@ -10,6 +10,7 @@ const publicConfig = {
 };
 const configScript = `<script>window.__PREFRAME_PUBLIC_CONFIG__=${JSON.stringify(publicConfig).replaceAll("<", "\\u003c")}</script>`;
 const html = (await readFile("index.html", "utf8"))
+  .replace("<head>", `<head><script>const preframeBase=document.createElement('base');preframeBase.href=location.pathname.startsWith('/PreFrame')?'/PreFrame/':'/';document.head.append(preframeBase)</script>`)
   .replace("</head>", `${configScript}</head>`)
   .replace('href="/styles.css"', 'href="./styles.css"')
   .replace("/dist/app.js", "./app.js");
