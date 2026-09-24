@@ -13,7 +13,7 @@ try {
   const errors = [];
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("http://127.0.0.1:4174", { waitUntil: "networkidle" });
+  await page.goto("http://127.0.0.1:4174/prototype.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(300);
   if (errors.length) throw new Error(`browser initialization errors: ${errors.join("; ")}`);
   assert.equal(await page.locator(".element").count(), 10, "expected nine kinds and one repeated dialogue block");

@@ -2,9 +2,9 @@
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Nine real paragraph types | Pass | `src/app.ts`, menu and ProseMirror schema |
+| Nine real paragraph types | Pass | `src/prototype.ts`, menu and ProseMirror schema; built at `prototype.html` |
 | Shortcuts and configurable alternative | Pass | Ctrl 1-9 / Alt+Shift 1-9 control |
-| Navigator and stable scene ID | Pass | `scene-7c2d` in `src/app.ts` |
+| Navigator and stable scene ID | Pass | `scene-7c2d` in `src/prototype.ts` |
 | Anchor preserved/orphaned | Pass | `test/model.test.mjs` |
 | Undo, selection, composition | Partially tested | ProseMirror history and native DOM composition are wired; physical IME composition remains a manual test |
 | Mixed Telugu, RTL, East Asian input | Partially tested | Browser seed and rendered PDF include Telugu, Arabic, Japanese and Korean; physical IME composition remains a manual test |
@@ -14,3 +14,5 @@
 ## Go/no-go
 
 Conditional go for Prompt 01: the key input, anchor, browser, PDF and compression proofs passed. Before production implementation, repeat the compression benchmark against a real photo/storyboard corpus and choose licensed bundled fonts for a cross-platform Arabic/PDF strategy. This spike contains no backend, authentication, subscription, database, or later routes.
+
+The original Prompt 00 browser proof remains isolated at `prototype.html`. The later app shell is a separate entry point. Historical PDF and compression evidence reflects the earlier browser run; repeat the script and physical IME checks before treating cross-platform behavior as verified.
