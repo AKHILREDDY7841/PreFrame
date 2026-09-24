@@ -27,6 +27,10 @@ export function remapTextComment(comment: TextComment, before: string, after: st
     return { ...comment, from: comment.from + delta, to: comment.to + delta };
   }
   if (prefix >= comment.to) return comment;
+  if (prefix > comment.from && removedEnd < comment.to) {
+    const to = comment.to + insertedEnd - removedEnd;
+    return { ...comment, to, quote: after.slice(comment.from, to) };
+  }
   return { ...comment, orphaned: true };
 }
 const safeImage = (value: string) => /^(https?:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(value) ? value : "";

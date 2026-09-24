@@ -16,4 +16,5 @@ test("script comment follows inserted text and orphans when its quote is removed
   assert.deepEqual(remapTextComment(comment, "hello world", "hello brave world"), { ...comment, from: 12, to: 17 });
   assert.equal(remapTextComment(comment, "hello world", "hello ").orphaned, true);
   assert.deepEqual(remapTextComment(comment, "hello world", "hello world!"), comment);
+  assert.deepEqual(remapTextComment(comment, "hello world", "hello wor-l-d"), { ...comment, to: 13, quote: "wor-l-d" });
 });
