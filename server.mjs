@@ -5,7 +5,9 @@ const root = process.cwd();
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".map": "application/json" };
 const port = Number(process.env.PORT || 4173);
 createServer(async (req, res) => {
-  const requested = (req.url === "/" ? "index.html" : decodeURIComponent(req.url || "")).replace(/^[/\\]+/, "");
+  const pathname = new URL(req.url || "/", "http://localhost").pathname;
+  const isAppRoute = pathname === "/" || pathname === "/auth" || pathname === "/app" || pathname.startsWith("/app/");
+  const requested = (isAppRoute ? "index.html" : decodeURIComponent(pathname)).replace(/^[/\\]+/, "");
   const path = normalize(join(root, requested));
   if (!path.startsWith(root)) return res.writeHead(403).end("Forbidden");
   try { const data = await readFile(path); if ((await stat(path)).isDirectory()) throw new Error("directory"); res.writeHead(200, { "content-type": types[extname(path)] || "application/octet-stream" }).end(data); }

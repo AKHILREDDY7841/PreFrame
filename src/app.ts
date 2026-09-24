@@ -5,6 +5,7 @@ import type { Project, SyncState } from "./domain.js";
 import { DurableProjectSync } from "./durable-sync.js";
 import { exportProject, previewBackup } from "./backup.js";
 import { landingDetails } from "./landing-content.js";
+import { renderHomePage } from "./home-content.js";
 const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
 const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
 const esc=(v:string)=>v.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]!)); const link=(p:string,l:string,c="")=>`<a class="${c}" href="${href(p)}" data-route>${l}</a>`;
@@ -12,13 +13,15 @@ function logo(){return `<a class="logo" href="${href("/")}" data-route aria-labe
 function shell(content:string,signed=false,badge=accountBadge){return `<header class="topbar">${logo()}<nav aria-label="Primary">${signed?`${link("/app","Home")} <button id="eye" type="button" aria-pressed="false">Eye-saver</button><span class="avatar">${preview?"Preview":accountBadge||badge}</span>${preview?"":"<button id='sign-out' type='button'>Sign out</button>"}`:`<span class="public-nav-center">${link("/#features","Features")} ${link("/#pricing","Pricing")} ${link("/#about","About")}</span><span class="public-nav-actions">${link("/auth","Log in","plain-link")} ${link("/auth","Get started →","button")}</span>`}</nav></header>${content}`;}
 function landing(){return shell(`<main class="landing"><section class="landing-stage" aria-labelledby="landing-title"><div class="landing-art" aria-hidden="true"></div><div class="landing-center-rule" aria-hidden="true"></div><div class="landing-copy"><p class="eyebrow">IDEAS <span>→</span> PLANS <span>→</span> REALITY</p><h1 id="landing-title">Before the<br><em>camera</em> rolls.</h1><p class="lede">Preframe is the all-in-one workspace for filmmakers<br class="desktop-break"> to write, visualize, plan and bring their stories to life.</p><div class="actions">${link("/auth","Start for free <span aria-hidden='true'>→</span>","button")}<button class="watch-video" type="button" disabled title="Video coming soon"><span class="play-ring" aria-hidden="true">▶</span>Watch video</button></div></div><div class="landing-frame-index" aria-hidden="true"><span></span>01 / 03</div><p class="landing-quote">“Ideas are easy.<br>Pre-production makes them real.”</p><div class="landing-feature-strip" aria-label="Preframe tools"><div class="landing-feature"><span class="feature-icon" aria-hidden="true">▤</span><span><strong>WRITE</strong><small>Screenplays &amp; Notes</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">◎</span><span><strong>VISUALIZE</strong><small>Shot lists &amp; Storyboards</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">▦</span><span><strong>PLAN</strong><small>Schedules &amp; Call sheets</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">♧</span><span><strong>COLLABORATE</strong><small>Work with your crew</small></span></div><span class="feature-aside" aria-hidden="true">SAME<br>STORY<br>HIGHER<br>POSSIBILITIES</span></div><div class="landing-bottom-mark" aria-hidden="true"><span>P R E F R A M E</span><span>BUILT FOR FILMMAKERS</span><a href="#features" aria-label="Scroll to features">SCROLL <span>✦</span></a></div></section>${landingDetails(href("/auth"))}</main>`);}
 function auth(){return shell(`<main class="auth-page"><section><p class="eyebrow">PREFRAME ACCOUNT</p><h1>Continue with Google</h1><p>Sign in to create and recover your projects.</p><button id="google-login" type="button">Continue with Google</button><p role="alert">${esc(errorMessage)}</p><p class="quiet">You can also inspect sample data stored only in this browser.</p><a class="plain-link" href="${href("/app")}?preview=1">Open local preview</a></section></main>`);}
-function card(p:Project){return `<article class="project-card"><div class="project-thumb" aria-hidden="true"></div><div class="project-info"><span class="sample-label">${p.sample?"Sample data":preview?"Local preview":"Cloud project"}</span><h3>${esc(p.title)}</h3><p>Last updated ${new Date(p.updatedAt).toLocaleDateString()}</p>${link(`/app/projects/${p.id}`,"Open project","text-link")}</div></article>`;}
 async function home(){
-  const identity=await repo.getIdentity(),projects=await repo.listProjects(),name=identity?.profile.displayName||"there";
-  const badge=preview?"Preview":identity?.isAdmin?"Admin":identity?.profile.tier==="premium"?"Premium":"Free";
-  const first=projects[0];
-  const tile=(title:string,subtitle:string,icon:string,route:string)=>`<article class="tool-tile"><span class="tool-icon" aria-hidden="true">${icon}</span><h3>${title}</h3><p>${subtitle}</p>${first?link(`/app/projects/${first.id}/${route}`,"Open →","text-link"):"<span class='quiet'>Create a project first</span>"}</article>`;
-  return shell(`<main class="app-shell"><aside class="side-nav" aria-label="App navigation">${link("/app","⌂  Home")}${link("/app","▱  Projects")}${preview?"":`<a href="#invitations">♧  Shared with me</a>`}<span class="side-signoff">Plan better.<br> Shoot greater.</span></aside><section class="home"><div class="cinema-banner"><p>Good morning,</p><h1>${esc(name)}.</h1><p>Ideas look better in focus.</p></div><div class="section-heading"><h2>Your ${badge==="Premium"?"Projects":"Project"}</h2>${preview?"":`<form id="new-project"><input name="title" aria-label="Project name" placeholder="Project name" required maxlength="160"><button type="submit">＋ New Project</button></form>`}</div><p role="alert">${esc(errorMessage)}</p><div class="project-grid">${projects.length?projects.map(card).join(""):"<p class='empty-copy'>No projects yet. Create one above.</p>"}</div><p class="local-note">${preview?"This sample is local preview data.":"Successfully synced projects can be recovered on another device."}</p>${preview?"":`<section class="upcoming" id="invitations"><h2>Invitations</h2><div id="invitations-list">Loading…</div></section>`}<section class="tool-section"><h2>Tools</h2><div class="tool-grid">${tile("Write","Screenplays & Notes","▤","screenplay")}${tile("Visualize","Shot lists & Storyboards","◉","shots")}${tile("Plan","Schedules & Call sheets","▦","schedule")}${tile("Import Script","Bring in your script","⇥","import")}</div></section><section class="schedule-panel"><div><h2>Upcoming Schedule</h2><p>No schedule entries yet. Open a project to begin planning when this workspace is ready.</p></div><div class="schedule-visual" aria-label="Misty alpine lake"></div></section></section></main>`,true,badge);
+  const identity=await repo.getIdentity();
+  const projects=await repo.listProjects();
+  const name=identity?.profile.displayName||"there";
+  const visualPreview=preview&&new URLSearchParams(location.search).get("home")==="premium";
+  const premium=visualPreview||Boolean(identity?.isAdmin||identity?.profile.tier==="premium");
+  const badge=visualPreview?"Premium preview":preview?"Preview":identity?.isAdmin?"Admin":premium?"Premium":"Free";
+  accountBadge=badge;
+  return renderHomePage({logo:logo(),href,projects,name,badge,premium,preview,error:errorMessage});
 }
 function dashboard(p:Project){
   const group=(name:string)=>`<section class="dashboard-group"><h2>${name}</h2><div class="module-grid">${tools.filter(([c])=>c===name).map(([,label,t])=>`<article><h3>${label}</h3><p>Empty workspace: this module has not been implemented yet.</p>${link(`/app/projects/${p.id}/${t}`,"Open workspace","text-link")}</article>`).join("")}</div></section>`;
@@ -50,6 +53,7 @@ async function render(){
   const {data:{session}}=await supabase.auth.getSession();
   const r=parseRoute(query.get("r")||location.pathname);
   document.body.classList.toggle("is-landing",r.page==="landing");
+  document.body.classList.toggle("is-home",r.page==="home"&&Boolean(session||preview));
   if(session&&!preview&&r.page!=="landing"&&r.page!=="auth"){
     try{const identity=await cloudRepo.getIdentity();accountBadge=identity?.isAdmin?"Admin":identity?.profile.tier==="premium"?"Premium":"Free";}
     catch{accountBadge="Free";}
@@ -58,7 +62,7 @@ async function render(){
     if(r.page==="landing")root.innerHTML=landing();
     else if(r.page==="auth")root.innerHTML=auth();
     else if(!session&&!preview){history.replaceState({},"",href("/auth"));root.innerHTML=auth();}
-    else if(r.page==="home"){root.innerHTML=await home();await renderTierPanel();}
+    else if(r.page==="home")root.innerHTML=await home();
     else if(r.page==="not-found")root.innerHTML=missing();
     else {
       const p=r.projectId&&await repo.getProject(r.projectId);
@@ -72,6 +76,13 @@ async function render(){
   document.querySelector("#sign-out")?.addEventListener("click",async()=>{await supabase.auth.signOut();sessionStorage.removeItem("preframe-preview");history.pushState({},"",href("/"));render();});
   document.querySelector("#eye")?.addEventListener("click",()=>{const warm=document.body.classList.toggle("eye-saver");localStorage.setItem("preframe-eye-saver",String(warm));(document.querySelector("#eye") as HTMLButtonElement).setAttribute("aria-pressed",String(warm));});
   if(localStorage.getItem("preframe-eye-saver")==="true")document.body.classList.add("eye-saver");
+  document.querySelector("#eye")?.setAttribute("aria-pressed",String(document.body.classList.contains("eye-saver")));
+  const newProjectToggle=document.querySelector<HTMLButtonElement>("#new-project-toggle");
+  const newProjectForm=document.querySelector<HTMLFormElement>("#new-project");
+  newProjectToggle?.addEventListener("click",()=>{if(!newProjectForm)return;newProjectForm.hidden=false;newProjectToggle.hidden=true;newProjectForm.querySelector<HTMLInputElement>("input")?.focus();});
+  document.querySelector("#cancel-project")?.addEventListener("click",()=>{if(!newProjectForm)return;newProjectForm.hidden=true;if(newProjectToggle)newProjectToggle.hidden=false;});
+  const search=document.querySelector<HTMLInputElement>("#project-search");
+  search?.addEventListener("input",()=>{const term=search.value.trim().toLocaleLowerCase();let visible=0;document.querySelectorAll<HTMLElement>(".home-project-card").forEach(card=>{const matches=(card.dataset.projectTitle||"").includes(term);card.hidden=!matches;if(matches)visible++;});const empty=document.querySelector<HTMLElement>("#project-search-empty");if(empty)empty.hidden=visible>0||!term;});
   const form=document.querySelector<HTMLFormElement>("#new-project");form?.addEventListener("submit",async event=>{event.preventDefault();try{const title=String(new FormData(form).get("title")||"").trim();const id=await cloudRepo.createProject(title,Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC");history.pushState({},"",href(`/app/projects/${id}`));errorMessage="";render();}catch(e){errorMessage=e instanceof Error?e.message:"Could not create project";render();}});
   if(document.querySelector("#invitations-list"))loadInvitations();
   if(r.page==="landing")wireLandingMotion();
@@ -80,17 +91,6 @@ async function render(){
   }
 }
 async function loadInvitations(){const target=document.querySelector("#invitations-list");if(!target)return;try{const rows=await cloudRepo.invitations();target.innerHTML=rows.length?rows.map(row=>`<p>Project invitation <button type="button" data-accept="${esc(row.id)}">Accept</button></p>`).join(""):"<p>No pending invitations.</p>";target.querySelectorAll<HTMLButtonElement>("[data-accept]").forEach(button=>button.addEventListener("click",async()=>{try{const id=await cloudRepo.acceptInvitation(button.dataset.accept!);history.pushState({},"",href(`/app/projects/${id}`));render();}catch(e){errorMessage=e instanceof Error?e.message:"Could not accept invitation";render();}}));}catch(e){target.textContent=e instanceof Error?e.message:"Could not load invitations";}}
-async function renderTierPanel(){
-  if(preview)return;
-  const grid=document.querySelector(".project-grid");if(!grid)return;
-  const panel=document.createElement("div");panel.className="tier-panel";
-  if(accountBadge==="Free")panel.innerHTML="<strong>Free plan</strong><p>One active owned project. Finish or archive it before creating another.</p>";
-  else if(accountBadge==="Premium"){
-    const project=(await cloudRepo.listProjects())[0];
-    panel.innerHTML=project?`<strong>Collaborate</strong><p>Work with your crew and manage editor access.</p>${link(`/app/projects/${project.id}`,"Open collaborators →","text-link")}`:"<strong>Collaborate</strong><p>Create a project to invite your crew.</p>";
-  }else return;
-  grid.insertAdjacentElement("afterend",panel);
-}
 function wireImport(){
   const input=document.querySelector<HTMLInputElement>("#backup-file"),target=document.querySelector<HTMLElement>("#backup-preview");
   input?.addEventListener("change",async()=>{
