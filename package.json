@@ -19,6 +19,7 @@
     "prosemirror-view": "^1.41.3"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "playwright": "^1.55.0",
     "typescript": "^5.9.2"
   }
