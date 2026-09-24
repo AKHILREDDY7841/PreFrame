@@ -13,6 +13,7 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "location", label: "Location" }, { key: "weather", label: "Weather" }, { key: "contacts", label: "Emergency contacts" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Notes" }],
 };
 const kinds = ["Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Act", "Text"];
+export const localDateISO = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 type TextComment = { id: string; from: number; to: number; quote: string; body: string; orphaned: boolean; resolved: boolean };
 export function remapTextComment(comment: TextComment, before: string, after: string): TextComment {
   if (before === after || comment.orphaned) return comment;
@@ -202,7 +203,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   status.textContent = "Saved on this device · Cloud sync is not connected yet";
   document.querySelector("#tool-add")?.addEventListener("click", async () => {
     if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
-    const defaults: Record<string, string> = tool === "screenplay" ? { kind: "Scene Heading", text: "INT. NEW SCENE - DAY" } : tool === "schedule" ? { date: new Date().toISOString().slice(0, 10) } : {};
+    const defaults: Record<string, string> = tool === "screenplay" ? { kind: "Scene Heading", text: "INT. NEW SCENE - DAY" } : tool === "schedule" ? { date: localDateISO(new Date()) } : {};
     const title = tool === "screenplay" ? "New scene" : tool === "notes" ? "Untitled note" : tool === "shots" ? "New shot" : tool === "storyboards" ? "New frame" : tool === "schedule" ? "New schedule item" : tool === "locations" ? "New location" : "Call sheet draft";
     const record = newToolRecord(title, defaults);
     record.fields.order = String(records.length).padStart(6, "0");

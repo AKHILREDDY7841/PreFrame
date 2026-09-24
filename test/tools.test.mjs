@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { daypartGreeting } from "../dist/home-content.js";
-import { remapTextComment } from "../dist/tool-ui.js";
+import { localDateISO, remapTextComment } from "../dist/tool-ui.js";
+
+test("new schedule dates follow the user's local calendar day", () => {
+  assert.equal(localDateISO(new Date(2026, 8, 25, 0, 1)), "2026-09-25");
+});
 
 test("greeting changes at each local daypart boundary", () => {
   assert.equal(daypartGreeting(4), "Good night");
