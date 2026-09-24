@@ -65,8 +65,12 @@ export class CloudProjectRepository {
             throw new Error(error.message);
     }
     async invitations() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.email)
+            return [];
         const { data, error } = await supabase.from("project_invitations")
-            .select("id,project_id,invitee_email").is("accepted_at", null).is("revoked_at", null);
+            .select("id,project_id,invitee_email").eq("invitee_email", user.email.toLowerCase())
+            .is("accepted_at", null).is("revoked_at", null);
         if (error)
             throw new Error(error.message);
         return data || [];
