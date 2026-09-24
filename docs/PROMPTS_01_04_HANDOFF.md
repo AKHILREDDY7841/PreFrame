@@ -1,17 +1,13 @@
-# Prompts 01–04 handoff
+# Prompts 01–04 status
 
-## Implemented locally
+The Prompt 00 feasibility editor is preserved separately at `prototype.html` in a built site (or `/PreFrame/prototype.html` on GitHub Pages after a future deployment). Its browser proof script targets that page; no fresh physical IME or PDF run was possible in this integration pass.
 
-- A responsive public landing page, auth gate, signed-in home, project dashboard, and dedicated routes for every approved workspace.
-- Typed UUID domain entities and repository boundaries. UI code never calls Supabase directly.
-- Warm eye-saver preference, reduced-motion support, real route parsing, clear 404/unavailable states, and sample data explicitly labelled local-only.
-- IndexedDB-backed local project persistence and a coalescing revision-aware sync queue. It labels local data as local and cannot call a cloud backend until one is configured.
-- A reviewed Supabase migration and a setup guide for the actual Prompt 02/03 integration.
+Prompt 01's responsive route shell, project dashboard, honest empty modules, type boundaries, eye-saver mode, and local sample are implemented. Current layout/routing unit tests pass. The approved Premium home variant and broad accessibility audit still need work, so its gate is not fully signed off.
 
-## Integration gate / not complete
+Prompt 02's core migration was applied to the hosted `PreFrame` Supabase project. The follow-up hardening migration is written but not applied. It has no passing local backend authorization/concurrency test suite or generated database types. The gate is not met.
 
-There is no configured Supabase project or Google OAuth application available to this repository. Therefore actual RLS execution, cloud project recovery, invite acceptance/removal, Google login/logout, two-device recovery, and server-backed sync cannot truthfully be marked complete. The disabled sign-in control is deliberate; it does not simulate authentication.
+Prompt 03 now has client code for Google redirect, session restoration, sign-out, cloud projects, invitation acceptance and editor removal. The Google OAuth client/provider and Supabase redirect settings are still incomplete; there is no verified two-browser recovery or revoked-editor test. The gate is not met.
 
-## Backup/import policy
+Prompt 04 now has an IndexedDB pending title-write queue, revision-checked cloud RPC design, coalescing, offline retention, retry states, and conflict preservation. It also has a versioned JSON project archive with SHA-256 checksums for structured content and uploaded media, plus import validation and preview that cannot create or overwrite a project. The archive explicitly warns that unsynced edits and unuploaded originals are excluded. These paths have not been tested against a real signed-in backend. Only the project title uses the queue; restore creation remains intentionally gated. The gate is not met.
 
-Prompt 04 requires complete export/import after the project document and media repository are implemented. The current local foundation stores only a project title; it has no media or screenplay content to export. Import remains validation-gated and does not create or overwrite a project.
+The live GitHub Pages site remains on the previously deployed build until the database and OAuth configuration are verified. Source changes are local and must not be described as live.

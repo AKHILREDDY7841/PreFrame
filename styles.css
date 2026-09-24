@@ -1,1 +1,83 @@
 :root{font-family:Inter,ui-sans-serif,system-ui,"Nirmala UI","Malgun Gothic",sans-serif;color:#193139;background:#fff;line-height:1.5}*{box-sizing:border-box}body{margin:0;background:#fff}.eye-saver{background:#fcf7ed;color:#2e302a}.topbar{height:72px;padding:0 clamp(20px,5vw,76px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e3eaec;background:inherit;gap:18px}.logo{display:flex;gap:8px;align-items:center;color:#193139;text-decoration:none;font:600 22px Georgia,serif}.logo svg{width:35px;height:27px;stroke:#43717f;fill:none;stroke-width:2.7}.topbar nav{display:flex;gap:18px;align-items:center;font-size:14px}.topbar a,.plain-link,.text-link{color:#355f6b;text-decoration:none}.button,.topbar .button{background:#43717f;color:#fff;padding:9px 14px;border:1px solid #43717f;border-radius:5px;text-decoration:none;font-weight:650}.topbar button,.section-heading button{border:1px solid #c8d6da;background:#fff;color:#355f6b;border-radius:5px;padding:8px 10px}.avatar{display:flex;align-items:center;gap:5px;border-radius:999px!important}.avatar small{color:#43717f}.landing{max-width:1180px;margin:auto}.hero{min-height:550px;padding:108px 7%;position:relative;overflow:hidden}.eyebrow{font-size:11px;letter-spacing:.14em;font-weight:700;color:#43717f;margin:0 0 14px}.hero h1,.auth-page h1,.empty-workspace h1,.cinema-banner h1,.project-page h1{font:500 clamp(43px,7vw,84px)/.97 Georgia,serif;letter-spacing:-.045em;margin:0;color:#193139}.lede{max-width:490px;font-size:18px;margin:24px 0}.actions{display:flex;align-items:center;gap:22px}.film-frames{position:absolute;right:5%;top:112px;width:42%;height:280px;pointer-events:none}.film-frames i{display:block;position:absolute;border:2px solid #43717f;opacity:.32;width:90%;height:200px}.film-frames i:nth-child(1){transform:rotate(-8deg);top:34px}.film-frames i:nth-child(2){transform:rotate(5deg);left:8%;top:10px}.film-frames i:nth-child(3){transform:rotate(-2deg);left:3%;top:55px}.public-section{padding:80px 7%;border-top:1px solid #e3eaec}.public-section h2{font:500 clamp(30px,4vw,51px)/1.08 Georgia,serif;margin:0 0 28px}.three,.tool-grid,.project-grid,.module-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.three article,.tool-grid article,.project-card,.module-grid article{border:1px solid #dbe5e7;padding:22px;background:#fff;min-height:150px}.three b,.tool-grid b{color:#43717f}.quiet-section{background:#f5f7f8}.auth-page,.empty-workspace{max-width:680px;margin:10vh auto;padding:42px}.auth-page section{border:1px solid #dbe5e7;padding:42px}.auth-page button{padding:11px 14px}.quiet{color:#61747a;font-size:14px}.app-shell{max-width:1400px;margin:auto;display:grid;grid-template-columns:190px 1fr;min-height:calc(100vh - 72px)}.side-nav{padding:34px 24px;border-right:1px solid #e3eaec;display:flex;flex-direction:column;gap:16px;font-size:14px}.side-nav a,.side-nav span{color:#45636c;text-decoration:none}.side-nav [aria-disabled]{opacity:.54}.home,.project-page{padding:42px clamp(24px,5vw,70px)}.cinema-banner{background:#f5f7f8;border-left:4px solid #43717f;padding:34px;margin-bottom:42px}.cinema-banner p{margin:0 0 8px}.cinema-banner h1{font-size:clamp(31px,4vw,53px)}.section-heading{display:flex;justify-content:space-between;align-items:end;margin:26px 0 14px}.section-heading h2,.tool-section h2,.upcoming h2,.dashboard-group h2{font:500 28px Georgia,serif;margin:0}.sample-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#43717f}.project-card h3{font:500 23px Georgia,serif;margin:16px 0 5px}.project-card p{color:#61747a;font-size:13px}.text-link{display:inline-block;margin-top:18px;font-weight:650}.local-note{font-size:13px;color:#61747a}.tool-section,.upcoming{margin-top:54px}.tool-grid{grid-template-columns:repeat(4,1fr)}.upcoming{padding:28px;border-top:1px solid #dbe5e7}.dashboard-group{margin-top:42px}.module-grid{grid-template-columns:repeat(2,1fr)}.project-title{display:block;max-width:420px;margin:26px 0 8px;font-size:14px}.project-title input{display:block;width:100%;padding:10px;border:1px solid #b8c9ce;margin-top:6px;font:inherit}.workspace-page{max-width:1200px;margin:auto;padding:30px clamp(24px,5vw,70px)}.workspace-head{display:flex;justify-content:space-between;font-size:14px}.project-chip{color:#61747a}.empty-workspace{border:1px solid #dbe5e7;margin:12vh auto;background:#fff}.empty-workspace h1{font-size:48px;margin-bottom:18px}#save-status{font-size:13px;color:#43717f}@media(max-width:720px){.topbar{padding:0 18px}.topbar nav>a:not(.button),.topbar nav .plain-link{display:none}.hero{padding:82px 24px;min-height:520px}.film-frames{width:60%;right:-10%;top:250px}.three,.tool-grid,.project-grid,.module-grid{grid-template-columns:1fr}.app-shell{display:block}.side-nav{border-right:0;border-bottom:1px solid #e3eaec;padding:15px 22px;flex-direction:row;overflow:auto}.home,.project-page{padding:28px 22px}.workspace-page{padding:24px}.auth-page,.empty-workspace{margin:8vh 18px;padding:26px}.auth-page section{padding:28px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Prompt 01 cinematic treatment, based on the supplied landing/home references. */
+.logo{font:500 16px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.28em;text-transform:uppercase}
+.logo svg{width:31px;height:31px;stroke:#203940}
+.topbar{position:relative;z-index:3;background:#fffffff0}
+.topbar nav{gap:26px}
+.topbar .button,.button{border-radius:999px;padding:11px 21px;background:#203f47;border-color:#203f47}
+.topbar a:hover,.plain-link:hover,.text-link:hover{text-decoration:underline;text-underline-offset:4px}
+.topbar :focus-visible,.landing :focus-visible,.app-shell :focus-visible{outline:3px solid #43717f;outline-offset:3px}
+.landing{max-width:none}
+.landing .hero{min-height:690px;padding:132px clamp(28px,5vw,90px) 100px;background:linear-gradient(90deg,#f8f8f5 0%,#f8f8f5f0 31%,#f8f8f577 50%,#192c3099 100%),url('./assets/hero-filmmaker.png') 50% 53%/cover no-repeat}
+.landing .hero::after{content:"";position:absolute;inset:auto 0 0;height:85px;background:linear-gradient(0deg,#18262a,transparent);pointer-events:none}
+.landing .hero .eyebrow{letter-spacing:.35em;color:#416a75;font-weight:500}
+.landing .hero h1{position:relative;z-index:1;font:400 clamp(64px,8.4vw,140px)/.87 Georgia,serif;letter-spacing:-.065em;max-width:800px;color:#172b31}
+.landing .hero h1 em{font-style:normal;color:#43717f}
+.landing .hero .lede{position:relative;z-index:1;max-width:520px;font-size:19px;line-height:1.55;margin:34px 0 30px;color:#354950}
+.landing .hero .actions{position:relative;z-index:1;gap:30px}
+.landing .hero .button{padding:15px 32px;background:#17282d;border-color:#17282d}
+.landing .hero .plain-link{color:#213a41}
+.film-frames{right:3%;top:22%;width:44%;height:380px;perspective:800px;filter:drop-shadow(8px 18px 28px #10202766)}
+.film-frames i{width:46%;height:57%;border:9px solid #17292cb8;opacity:.9;background:url('./assets/hero-filmmaker.png') center/cover no-repeat;box-shadow:0 20px 36px #111b2055;animation:frame-enter 280ms ease-out both}
+.film-frames i:nth-child(1){left:0;top:28px;transform:rotateY(-18deg) rotate(-5deg);background-position:55% 48%}
+.film-frames i:nth-child(2){left:28%;top:65px;transform:rotateY(8deg) rotate(4deg);background-position:75% 48%;animation-delay:90ms}
+.film-frames i:nth-child(3){left:56%;top:34px;transform:rotateY(-12deg) rotate(-2deg);background-position:95% 48%;animation-delay:180ms}
+.hero-count{position:absolute;z-index:2;right:6%;bottom:100px;color:#e6eded;letter-spacing:.35em;font-size:12px}
+@keyframes frame-enter{from{opacity:0;translate:0 12px}to{opacity:.9;translate:0 0}}
+.landing #features{background:#16262a;color:#eef2f1;border:0}
+.landing #features .eyebrow,.landing #features .three b{color:#9fbfc7}
+.landing #features .three article{background:#1d3035;border-color:#385159;color:#d6e2e3;min-height:170px}
+.landing #features .three b{font-size:20px;font-weight:500}
+.landing #features .three p{max-width:260px}
+.landing .public-section{padding:82px clamp(28px,7vw,120px)}
+.app-shell{max-width:none;grid-template-columns:200px 1fr}
+.side-nav{position:relative;padding:34px 22px;border-color:#e5ebec;gap:9px}
+.side-nav a{padding:11px 15px;border-radius:7px;color:#395964}
+.side-nav a:first-child{background:#e7eff0;color:#183e4a}
+.side-signoff{position:absolute;bottom:30px;left:38px;color:#6f858b!important;font-size:13px}
+.home{max-width:1430px;width:100%;padding:0 clamp(26px,4vw,70px) 70px}
+.cinema-banner{height:232px;margin:0 calc(-1 * clamp(26px,4vw,70px)) 30px;padding:42px clamp(26px,4vw,70px);border:0;background:linear-gradient(90deg,#ffffff 0%,#ffffffd9 29%,#ffffff40 56%,#ffffff00 100%),url('./assets/lake-banner.png') center 48%/cover no-repeat}
+.cinema-banner p:first-child{font-size:16px;color:#263c43}
+.cinema-banner h1{font:400 clamp(42px,5vw,70px)/.92 Georgia,serif;letter-spacing:-.05em}
+.cinema-banner p:last-child{font-size:16px;margin-top:6px}
+.cinema-banner{animation:banner-enter 250ms ease-out both}
+@keyframes banner-enter{from{opacity:.65;translate:0 8px}to{opacity:1;translate:0 0}}
+.section-heading{margin-top:12px;margin-bottom:18px;align-items:center}
+.section-heading h2,.tool-section h2,.upcoming h2,.schedule-panel h2{font:500 26px Georgia,serif;color:#1b3036}
+#new-project{display:flex;gap:8px}
+#new-project input,.dashboard-group input{border:1px solid #cbd8db;border-radius:7px;padding:9px 11px;font:inherit}
+#new-project button,.dashboard-group button{border-radius:999px;background:#43717f;color:#fff;border:0;padding:9px 18px;font:inherit;cursor:pointer}
+.project-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.project-card{padding:0;min-height:0;overflow:hidden;border-radius:8px;box-shadow:0 8px 26px #29434a0b}
+.project-card{animation:card-enter 220ms ease-out both;transition:border-color 180ms ease,box-shadow 180ms ease}
+.project-card:hover,.project-card:focus-within{border-color:#43717f;box-shadow:0 10px 28px #29434a21}
+@keyframes card-enter{from{opacity:.55;translate:0 6px}to{opacity:1;translate:0 0}}
+.project-thumb{height:135px;background:url('./assets/hero-filmmaker.png') 70% 50%/cover no-repeat}
+.project-info{padding:16px}
+.project-card h3{margin:6px 0;font-size:22px}
+.project-card .text-link{margin-top:8px}
+.project-grid:has(.project-card:only-child){display:block}
+.project-grid .project-card:only-child{display:flex;max-width:780px;min-height:150px}
+.project-grid .project-card:only-child .project-thumb{width:32%;height:auto;flex:none}
+.project-grid .project-card:only-child .project-info{padding:24px 28px}
+.tier-panel{border:1px solid #e5ebec;background:#f8faf9;border-radius:9px;padding:18px 22px;margin-top:16px;color:#29454e}
+.tier-panel strong{font-weight:650}
+.tier-panel p{font-size:13px;margin:5px 0 0}
+.tier-panel .text-link{margin-top:8px}
+.tool-section{margin-top:35px;padding-top:27px;border-top:1px solid #e5ebec}
+.tool-grid{margin-top:18px;gap:12px}
+.tool-tile{min-height:175px!important;padding:22px!important;border:1px solid #e8eeee!important;border-radius:9px;background:#fafbfa!important}
+.tool-icon{font-size:36px;line-height:1;color:#43717f}
+.tool-tile h3{font-size:17px;margin:15px 0 3px;font-weight:600}
+.tool-tile p{font-size:12px;color:#63777d;margin:0}
+.tool-tile .text-link{margin-top:10px;font-size:12px}
+.schedule-panel{display:grid;grid-template-columns:1fr 42%;min-height:230px;gap:14px;margin-top:28px}
+.schedule-panel>div:first-child{border:1px solid #e2e9ea;border-radius:9px;padding:25px}
+.schedule-panel p{max-width:400px;color:#677a80}
+.schedule-visual{border-radius:9px;background:url('./assets/lake-banner.png') 53% 50%/cover no-repeat}
+.upcoming{margin-top:30px;padding:20px 0;border-top:1px solid #e3eaec}
+.eye-saver .topbar,.eye-saver .tool-tile,.eye-saver .project-card{background:#fcf7ed!important}
+@media(max-width:900px){.film-frames{opacity:.42;right:-9%;width:55%}.landing .hero h1{font-size:clamp(64px,11vw,100px)}.app-shell{grid-template-columns:155px 1fr}.side-signoff{display:none}}
+@media(max-width:720px){.landing .hero{min-height:630px;padding:95px 24px 70px;background-position:60% center}.landing .hero h1{font-size:clamp(54px,13vw,80px)}.landing .hero .lede{font-size:16px}.film-frames{right:-30%;top:51%;width:88%;height:220px;opacity:.24}.film-frames i{height:70%}.hero-count{bottom:30px}.landing .public-section{padding:55px 24px}.app-shell{display:block}.side-nav{padding:8px 18px}.side-nav a{white-space:nowrap}.home{padding:0 18px 40px}.cinema-banner{margin:0 -18px 22px;padding:30px 22px;height:210px;background-position:40% center}.cinema-banner h1{font-size:50px}.section-heading{display:block}#new-project{margin-top:14px}.project-grid{grid-template-columns:1fr}.project-grid .project-card:only-child .project-thumb{width:35%}.tool-grid{grid-template-columns:repeat(2,1fr)}.schedule-panel{grid-template-columns:1fr}.schedule-visual{height:180px}}
+@media(prefers-reduced-motion:reduce){.film-frames i{animation:none}}
