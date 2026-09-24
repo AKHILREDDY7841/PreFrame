@@ -89,3 +89,15 @@ export async function restoreToolData(ownerId: string, projectId: string, source
   });
   return count;
 }
+export async function clearToolData(ownerId: string, projectId: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const prefix = `${ownerId}:${projectId}:`;
+    const cursor = store.openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
+    cursor.onsuccess = () => { if (cursor.result) { cursor.result.delete(); cursor.result.continue(); } };
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}

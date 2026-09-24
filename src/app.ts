@@ -7,7 +7,7 @@ import { exportProject, previewBackup } from "./backup.js";
 import { landingDetails } from "./landing-content.js";
 import { renderHomePage } from "./home-content.js";
 import { mountToolWorkspace, toolWorkspace } from "./tool-ui.js";
-import { exportToolData, restoreToolData, toolRecords } from "./tool-data.js";
+import { clearToolData, exportToolData, restoreToolData, toolRecords } from "./tool-data.js";
 const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; let currentUserId = ""; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
 const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
 const esc=(v:string)=>v.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]!)); const link=(p:string,l:string,c="")=>`<a class="${c}" href="${href(p)}" data-route>${l}</a>`;
@@ -25,7 +25,7 @@ async function home(){
   accountBadge=badge;
   const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   const upcoming=projects[0]?(await toolRecords(preview?"local-demo-owner":currentUserId,projects[0].id,"schedule"))
-    .filter(item=>item.fields.date&&item.fields.date>=today)
+    .filter(item=>/^\d{4}-\d{2}-\d{2}$/.test(item.fields.date||"")&&Number.isFinite(Date.parse(`${item.fields.date}T12:00:00`))&&item.fields.date>=today)
     .sort((a,b)=>`${a.fields.date} ${a.fields.start||""}`.localeCompare(`${b.fields.date} ${b.fields.start||""}`)).slice(0,3):[];
   return renderHomePage({logo:logo(),href,projects,name,badge,premium,preview,error:errorMessage,upcoming});
 }
@@ -131,11 +131,11 @@ async function wire(p:Project){
     catch(e){backupStatus.textContent=e instanceof Error?e.message:"Restore failed";}
   });
   document.querySelector("#delete-project")?.addEventListener("click",async()=>{
-    const typed=prompt(`Permanently delete “${p.title}” and its project data? Type the project name to confirm.`);
-    if(typed!==p.title)return;
+    const typed=prompt(`Permanently delete “${current.title}” and its project data? Type the project name to confirm.`);
+    if(typed!==current.title)return;
     const button=document.querySelector<HTMLButtonElement>("#delete-project")!;
     button.disabled=true;button.textContent="Deleting…";
-    try{await cloudRepo.deleteProject(p.id);history.pushState({},"",href("/app"));errorMessage="Project deleted.";render();}
+    try{await cloudRepo.deleteProject(p.id);try{await clearToolData(localScope,p.id);errorMessage="Project deleted.";}catch{errorMessage="Project deleted from the cloud, but local browser records could not be cleared.";}history.pushState({},"",href("/app"));render();}
     catch(e){button.disabled=false;button.textContent="Delete project…";status.textContent=e instanceof Error?e.message:"Deletion failed";}
   });
   let sync:DurableProjectSync|undefined;
