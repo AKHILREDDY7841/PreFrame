@@ -130,3 +130,125 @@
   .is-landing .topbar .public-nav-actions .button{color:#fff}
   .landing-stage::after{content:"";position:absolute;z-index:1;left:0;right:0;bottom:0;height:34%;background:linear-gradient(transparent,#11191a 24%,#11191a 80%,#101819e0);pointer-events:none}
 }
+
+/* The three chapters below the hero continue its film and editorial language. */
+.story-section{position:relative;overflow:hidden;scroll-margin-top:0}
+.story-inner{position:relative;z-index:1;max-width:1600px;margin:auto;padding:92px clamp(28px,5vw,78px) 110px}
+.section-rule{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:17px;border-bottom:1px solid currentColor;font-size:10px;letter-spacing:.31em;line-height:1.4}
+.section-eyebrow{margin:0 0 27px;font-size:10px;letter-spacing:.38em;line-height:1.5}
+.story-section h2{margin:0;font:400 clamp(52px,5.5vw,89px)/.96 Georgia,'Times New Roman',serif;letter-spacing:-.065em}
+.story-section h2 em{font-style:normal;color:#8dafb7}
+.feature-section{background:radial-gradient(ellipse at 77% 27%,#30444a 0%,transparent 33%),linear-gradient(128deg,#101b1e,#1b2a2e 54%,#111b1e);color:#ecf0ee}
+.landing #features.feature-section{padding:0;background:radial-gradient(ellipse at 77% 27%,#30444a 0%,transparent 33%),linear-gradient(128deg,#101b1e,#1b2a2e 54%,#111b1e);color:#ecf0ee;border:0}
+.feature-section::after{content:"";position:absolute;right:-16%;top:9%;width:60%;height:650px;border:1px solid #cbdadb11;transform:rotate(-14deg);pointer-events:none}
+.feature-section .section-rule{color:#8da7aa;border-color:#5a707254}
+.feature-section .section-eyebrow{color:#92b6bf}
+.feature-intro,.pricing-intro{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(250px,.75fr);gap:7%;align-items:end;margin:73px 0 78px}
+.feature-intro>p,.pricing-intro>p{max-width:390px;margin:0 0 8px;font-size:18px;line-height:1.65;color:#a9bbbd}
+.feature-showcase{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);min-height:550px;border-top:1px solid #8293944a;border-bottom:1px solid #8293944a}
+.feature-art{position:relative;min-height:550px;overflow:hidden;background:linear-gradient(0deg,#0f1b1edb,transparent 47%,#18262a55),url('./assets/landing-cinema.png') 71% 49%/auto 100% no-repeat;background-color:#34464a}
+.feature-art::before,.feature-art::after{content:"";position:absolute;top:0;bottom:0;width:13px;border-left:1px dashed #c9ded844;border-right:1px dashed #c9ded844;pointer-events:none}
+.feature-art::before{left:20px}.feature-art::after{right:20px}
+.feature-art-index,.feature-art-bottom{position:absolute;left:52px;font-size:10px;letter-spacing:.3em;color:#dde9e6}
+.feature-art-index{top:30px}.feature-art-bottom{bottom:25px}
+.feature-art-quote{position:absolute;left:52px;bottom:93px;font:italic 43px/1.05 Georgia,serif;letter-spacing:-.04em;color:#f3f5ee;text-shadow:0 2px 20px #0d1619}
+.feature-chapters{display:grid;grid-template-rows:repeat(4,1fr);padding-left:7%;background:#19292d88}
+.feature-chapters article{display:grid;grid-template-columns:44px 1fr 28px;gap:15px;align-items:center;border-bottom:1px solid #9fb0b040;padding:25px 18px 25px 0}
+.feature-chapters article:last-child{border-bottom:0}
+.chapter-number{align-self:start;margin-top:5px;color:#91aeb4;font-size:11px;letter-spacing:.2em}
+.feature-chapters h3{margin:0 0 7px;font:400 31px Georgia,serif;letter-spacing:-.035em}
+.feature-chapters p{margin:0;max-width:340px;color:#a9b9bb;font-size:14px;line-height:1.5}
+.chapter-arrow{font-size:22px;color:#9fc3c9;transition:transform 250ms ease}
+.feature-chapters article:hover .chapter-arrow{transform:translate(4px,-4px)}
+.pricing-section{background:radial-gradient(circle at 87% 17%,#e2e5e0 0%,transparent 30%),linear-gradient(140deg,#faf9f4,#ecefeb 80%);color:#18292d}
+.pricing-section .section-rule{color:#617579;border-color:#bbc7c5}
+.pricing-section .section-eyebrow{color:#557b86}
+.pricing-section h2 em{color:#5c8791}
+.pricing-intro{margin-bottom:63px}
+.pricing-intro>p{color:#576a6d}
+.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;align-items:stretch}
+.price-card{position:relative;display:flex;flex-direction:column;min-height:540px;padding:27px 29px 30px;border:1px solid #bdcac9;background:#f9faf7d9;box-shadow:0 20px 50px #2940450a;transition:translate 300ms ease,box-shadow 300ms ease}
+.price-card:hover{translate:0 -5px;box-shadow:0 24px 55px #29404518}
+.price-card-accent{background:#dbe7e6;border-color:#a6bcbf}
+.price-card-annual{background:#1d3034;border-color:#1d3034;color:#f2f4ef}
+.price-card-top{display:flex;justify-content:space-between;gap:10px;padding-bottom:17px;border-bottom:1px solid #9eaeae8a;color:#597178;font-size:9px;letter-spacing:.24em}
+.price-card-annual .price-card-top{color:#acc2c4;border-color:#77909580}
+.price-card h3{margin:36px 0 19px;font:400 clamp(30px,2.6vw,41px)/1 Georgia,serif;letter-spacing:-.05em}
+.price-value{margin:0;font:400 clamp(57px,5vw,84px)/1 Georgia,serif;letter-spacing:-.07em}
+.price-value small{font:400 16px ui-sans-serif,system-ui,sans-serif;letter-spacing:0;white-space:nowrap}
+.price-term{margin:18px 0 0;color:#49626a;font-size:14px}
+.price-term strong{color:#1d3740}
+.price-divider{height:1px;background:#bdc9c6;margin:38px 0 22px}
+.price-description{margin:0;color:#53686e;font-size:14px;line-height:1.6}
+.price-action,.price-unavailable{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:42px;color:#203e46;text-decoration:none;font-size:14px;font-weight:600}
+.price-action span{font-size:21px;transition:transform 250ms ease}
+.price-action:hover span{transform:translate(4px,-4px)}
+.price-unavailable{color:#567278;font-weight:400}
+.price-card-annual .price-unavailable{color:#b1c9cb;padding-top:24px}
+.annual-offer{border-top:1px solid #778d8e80;padding:16px 0 13px}
+.annual-offer>span{color:#aac8ca;font-size:9px;letter-spacing:.24em}
+.annual-offer p{margin:7px 0 2px;font-size:16px}
+.annual-offer strong{font:400 34px Georgia,serif;letter-spacing:-.05em}
+.annual-offer small{display:block;max-width:340px;color:#bbc9c8;font-size:11px;line-height:1.45}
+.annual-renewal{margin:10px 0 0;color:#d9e7e5;font-size:14px}
+.pricing-note{margin:24px 0 0;color:#66797a;font-size:13px;line-height:1.5}
+.about-section{min-height:760px;background:#142327;color:#f5f4ef}
+.about-image{position:absolute;inset:0;background:linear-gradient(90deg,#0f1c20f2 0%,#132125d9 35%,#1424295e 64%,#101b1e42),url('./assets/hero-filmmaker.png') center 51%/cover no-repeat;scale:1.02}
+.about-section .section-rule{color:#bfd0ce;border-color:#a4bbb85c}
+.about-copy{max-width:840px;margin-top:115px}
+.about-copy .section-eyebrow{color:#b7d7db}
+.about-copy h2{font-size:clamp(56px,6.2vw,102px)}
+.about-copy h2 em{color:#a4c2c6}
+.about-copy>p:last-child{max-width:550px;margin:33px 0 0;color:#d0d9d6;font-size:18px;line-height:1.65}
+.about-footer{display:flex;align-items:center;justify-content:space-between;gap:30px;margin-top:130px;padding-top:23px;border-top:1px solid #c3d1cd6b;color:#d4e0dc;font-size:11px;letter-spacing:.22em}
+.about-footer a{display:inline-flex;align-items:center;gap:25px;color:#f3f5f2;text-decoration:none;font-size:15px;letter-spacing:0}
+.about-footer a span{font-size:24px;transition:transform 250ms ease}
+.about-footer a:hover span{transform:translate(4px,-4px)}
+.landing-art{animation:cinema-reveal 1100ms cubic-bezier(.2,.7,.2,1) both,cinema-float 20s ease-in-out 1100ms infinite alternate}
+.landing-art::after{content:"";position:absolute;inset:-10%;background:radial-gradient(ellipse at 36% 52%,#fff8e444,transparent 44%);pointer-events:none;animation:light-drift 15s ease-in-out infinite alternate}
+.motion-ready .landing [data-reveal]{opacity:0;transform:translateY(24px);transition:opacity 700ms ease,transform 700ms cubic-bezier(.2,.7,.2,1)}
+.motion-ready .landing [data-reveal].in-view{opacity:1;transform:translateY(0)}
+@keyframes cinema-float{from{transform:scale(1.005) translateX(0)}to{transform:scale(1.025) translateX(-.45%)}}
+@keyframes light-drift{from{transform:translateX(-3%);opacity:.35}to{transform:translateX(4%);opacity:.7}}
+@media(max-width:900px){
+  .feature-intro,.pricing-intro{grid-template-columns:1fr;gap:25px}
+  .feature-intro>p,.pricing-intro>p{max-width:650px}
+  .pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .price-card-annual{grid-column:1/-1;min-height:0}
+}
+@media(max-width:720px){
+  .story-inner{padding:61px 24px 75px}
+  .section-rule{font-size:8px;letter-spacing:.17em}
+  .section-rule span:last-child{text-align:right}
+  .story-section h2{font-size:clamp(48px,11.5vw,72px)}
+  .section-eyebrow{font-size:9px;letter-spacing:.23em}
+  .feature-intro,.pricing-intro{margin:54px 0 46px}
+  .feature-intro>p,.pricing-intro>p{font-size:15px;line-height:1.55}
+  .feature-showcase{display:block}
+  .feature-art{min-height:370px;background-size:auto 100%;background-position:67% center}
+  .feature-art-quote{left:40px;bottom:74px;font-size:34px}
+  .feature-art-index,.feature-art-bottom{left:40px;font-size:8px}
+  .feature-chapters{padding:0 10px 0 22px}
+  .feature-chapters article{min-height:124px;grid-template-columns:26px 1fr 20px;gap:11px;padding:18px 8px 18px 0}
+  .feature-chapters h3{font-size:27px}
+  .feature-chapters p{font-size:12px}
+  .pricing-grid{grid-template-columns:1fr}
+  .price-card-annual{grid-column:auto}
+  .price-card{min-height:0;padding:24px 26px 27px}
+  .price-card h3{margin:29px 0 15px}
+  .price-card .price-value{font-size:65px}
+  .price-divider{margin:28px 0 20px}
+  .price-action,.price-unavailable{padding-top:35px}
+  .about-section{min-height:700px}
+  .about-image{background-position:66% center;background-image:linear-gradient(90deg,#0f1c20f2,#132125c9 72%,#14242977),url('./assets/hero-filmmaker.png')}
+  .about-copy{margin-top:88px}
+  .about-copy h2{font-size:clamp(48px,11.5vw,70px)}
+  .about-copy>p:last-child{font-size:15px;line-height:1.6}
+  .about-footer{margin-top:95px;display:block;font-size:9px;line-height:1.7}
+  .about-footer a{margin-top:22px}
+}
+@media(prefers-reduced-motion:reduce){
+  .landing-art,.landing-art::after{animation:none!important}
+  .motion-ready .landing [data-reveal]{opacity:1;transform:none;transition:none}
+  .price-card,.chapter-arrow,.price-action span,.about-footer a span{transition:none}
+}
