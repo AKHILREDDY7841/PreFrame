@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { daypartGreeting } from "../dist/home-content.js";
-import { localDateISO, remapTextComment } from "../dist/tool-ui.js";
+import { localDateISO, remapTextComment, screenplayKinds } from "../dist/tool-ui.js";
+
+test("screenplay shortcuts follow the specified nine-element order", () => {
+  assert.deepEqual(screenplayKinds, ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"]);
+});
 
 test("new schedule dates follow the user's local calendar day", () => {
   assert.equal(localDateISO(new Date(2026, 8, 25, 0, 1)), "2026-09-25");
