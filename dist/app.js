@@ -85,7 +85,7 @@ async function render() {
         errorMessage = "";
         render();
     } }));
-    document.querySelector("#google-login")?.addEventListener("click", async () => { sessionStorage.removeItem("preframe-preview"); sessionStorage.setItem("preframe-oauth-pending", "1"); const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${location.origin}${href("/")}` } }); if (error) {
+    document.querySelector("#google-login")?.addEventListener("click", async () => { sessionStorage.removeItem("preframe-preview"); sessionStorage.setItem("preframe-oauth-pending", "1"); const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${location.origin}${href("/")}`, queryParams: { prompt: "select_account" } } }); if (error) {
         sessionStorage.removeItem("preframe-oauth-pending");
         errorMessage = error.message;
         render();
