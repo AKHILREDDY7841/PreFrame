@@ -1,5 +1,5 @@
 export type ToolName = "screenplay" | "notes" | "shots" | "storyboards" | "schedule" | "locations" | "call-sheets";
-export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string };
+export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number };
 
 const DB = "preframe-tools-v1";
 const STORE = "records";
@@ -32,22 +32,22 @@ function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) 
 const scope = (ownerId: string, projectId: string, tool: ToolName) => `${ownerId}:${projectId}:${tool}`;
 export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
-  return (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt }) => ({ id, title, fields, createdAt, updatedAt }));
+  return (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
 }
-export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedUpdatedAt?: string): Promise<void> {
-  const item: Stored = { ...record, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
+export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedRevision = 0): Promise<number> {
+  const item: Stored = { ...record, revision: expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
   const db = await database();
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     const request = store.get(item.key);
     request.onsuccess = () => {
       const current = request.result as Stored | undefined;
-      if (expectedUpdatedAt !== undefined && current?.updatedAt !== expectedUpdatedAt) { tx.abort(); return; }
+      if ((current?.revision || 0) !== expectedRevision) { tx.abort(); return; }
       store.put(item);
     };
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onabort = () => { db.close(); reject(new Error(expectedUpdatedAt !== undefined ? "This item changed in another tab. Reload before editing it again." : "Local save was interrupted")); };
+    tx.oncomplete = () => { db.close(); resolve(item.revision!); };
+    tx.onabort = () => { db.close(); reject(new Error("This item changed in another tab. Reload before editing it again.")); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
@@ -56,7 +56,7 @@ export async function deleteToolRecord(ownerId: string, projectId: string, tool:
 }
 export function newToolRecord(title: string, fields: Record<string, string> = {}): ToolRecord {
   const timestamp = new Date().toISOString();
-  return { id: crypto.randomUUID(), title, fields, createdAt: timestamp, updatedAt: timestamp };
+  return { id: crypto.randomUUID(), title, fields, createdAt: timestamp, updatedAt: timestamp, revision: 0 };
 }
 const tools: ToolName[] = ["screenplay", "notes", "shots", "storyboards", "schedule", "locations", "call-sheets"];
 export async function exportToolData(ownerId: string, projectId: string): Promise<string> {
@@ -64,7 +64,7 @@ export async function exportToolData(ownerId: string, projectId: string): Promis
   return JSON.stringify({ format: "preframe-local-tools-v1", projectId, exportedAt: new Date().toISOString(), records }, null, 2);
 }
 export async function restoreToolData(ownerId: string, projectId: string, source: string): Promise<number> {
-  if (source.length > 40_000_000) throw new Error("Backup exceeds the 40 MB import limit");
+  if (source.length > 320_000_000) throw new Error("Backup exceeds the 320 MB import limit");
   const backup = JSON.parse(source) as { format?: string; projectId?: string; records?: Record<string, unknown> };
   if (backup.format !== "preframe-local-tools-v1" || backup.projectId !== projectId || !backup.records || typeof backup.records !== "object") throw new Error("This is not a local tool backup for this project");
   let count = 0;
@@ -80,7 +80,7 @@ export async function restoreToolData(ownerId: string, projectId: string, source
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     for (const tool of tools) for (const row of backup.records![tool] as ToolRecord[]) {
-      store.put({ ...row, key: `${scope(ownerId, projectId, tool)}:${row.id}`, scope: scope(ownerId, projectId, tool), tool });
+      store.put({ ...row, revision: Number.isSafeInteger(row.revision) && row.revision! >= 0 ? row.revision : 1, key: `${scope(ownerId, projectId, tool)}:${row.id}`, scope: scope(ownerId, projectId, tool), tool });
       count++;
     }
     tx.oncomplete = () => { db.close(); resolve(); };

@@ -7,7 +7,7 @@ import { exportProject, previewBackup } from "./backup.js";
 import { landingDetails } from "./landing-content.js";
 import { renderHomePage } from "./home-content.js";
 import { mountToolWorkspace, toolWorkspace } from "./tool-ui.js";
-import { exportToolData, restoreToolData } from "./tool-data.js";
+import { exportToolData, restoreToolData, toolRecords } from "./tool-data.js";
 const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; let currentUserId = ""; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
 const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
 const esc=(v:string)=>v.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]!)); const link=(p:string,l:string,c="")=>`<a class="${c}" href="${href(p)}" data-route>${l}</a>`;
@@ -23,7 +23,11 @@ async function home(){
   const premium=visualPreview||Boolean(identity?.isAdmin||identity?.profile.tier==="premium");
   const badge=visualPreview?"Premium preview":preview?"Preview":identity?.isAdmin?"Admin":premium?"Premium":"Free";
   accountBadge=badge;
-  return renderHomePage({logo:logo(),href,projects,name,badge,premium,preview,error:errorMessage});
+  const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const upcoming=projects[0]?(await toolRecords(preview?"local-demo-owner":currentUserId,projects[0].id,"schedule"))
+    .filter(item=>item.fields.date&&item.fields.date>=today)
+    .sort((a,b)=>`${a.fields.date} ${a.fields.start||""}`.localeCompare(`${b.fields.date} ${b.fields.start||""}`)).slice(0,3):[];
+  return renderHomePage({logo:logo(),href,projects,name,badge,premium,preview,error:errorMessage,upcoming});
 }
 function dashboard(p:Project){
   const group=(name:string)=>`<section class="dashboard-group"><h2>${name}</h2><div class="module-grid">${tools.filter(([c])=>c===name).map(([,label,t])=>`<article><h3>${label}</h3><p>Create and edit project records on this device.</p>${link(`/app/projects/${p.id}/${t}`,"Open workspace","text-link")}</article>`).join("")}</div></section>`;
@@ -123,7 +127,7 @@ async function wire(p:Project){
     const file=(event.currentTarget as HTMLInputElement).files?.[0];if(!file||!backupStatus)return;
     if(!confirm("Restore tool data from this file? Matching items will be replaced on this device."))return;
     backupStatus.textContent="Validating backup…";
-    try{if(file.size>40_000_000)throw new Error("Backup exceeds 40 MB");const count=await restoreToolData(localScope,p.id,await file.text());backupStatus.textContent=`Restored ${count} items on this device. Reload a tool to see them.`;}
+    try{if(file.size>320_000_000)throw new Error("Backup exceeds 320 MB");const count=await restoreToolData(localScope,p.id,await file.text());backupStatus.textContent=`Restored ${count} items on this device. Reload a tool to see them.`;}
     catch(e){backupStatus.textContent=e instanceof Error?e.message:"Restore failed";}
   });
   document.querySelector("#delete-project")?.addEventListener("click",async()=>{

@@ -8,7 +8,7 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   notes: [{ key: "body", label: "Note" }],
   shots: [{ key: "scene", label: "Scene" }, { key: "description", label: "Description" }, { key: "size", label: "Shot size" }, { key: "type", label: "Shot type" }, { key: "movement", label: "Movement" }, { key: "estimate", label: "Est. time" }, { key: "image", label: "Image URL", type: "url" }],
   storyboards: [{ key: "shot", label: "Shot" }, { key: "description", label: "Description" }, { key: "sound", label: "Sound effects" }, { key: "video", label: "Video reference URL", type: "url" }, { key: "image", label: "Image URL", type: "url" }],
-  schedule: [{ key: "date", label: "Shoot date", type: "date" }, { key: "start", label: "Start", type: "time" }, { key: "end", label: "End", type: "time" }, { key: "scene", label: "Scene" }, { key: "location", label: "Location" }, { key: "description", label: "Description" }, { key: "cast", label: "Cast" }, { key: "crew", label: "Crew" }, { key: "equipment", label: "Equipment" }, { key: "props", label: "Props" }, { key: "wardrobe", label: "Wardrobe" }, { key: "makeup", label: "Makeup" }, { key: "notes", label: "Notes" }, { key: "status", label: "Status" }, { key: "contact", label: "Contact" }],
+  schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "sceneNumbers", label: "Scene Number(s)" }, { key: "scriptPages", label: "Script Pages" }, { key: "location", label: "Location" }, { key: "time", label: "Time" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "propsRequired", label: "Props Required" }, { key: "costumes", label: "Costumes" }, { key: "equipmentRequired", label: "Equipment Required" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "backupStatus", label: "Backup Status" }, { key: "notes", label: "Notes" }],
   locations: [{ key: "address", label: "Address" }, { key: "contact", label: "Contact" }, { key: "phone", label: "Phone" }, { key: "permit", label: "Permit status" }, { key: "access", label: "Access / parking" }, { key: "notes", label: "Notes" }],
   "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "location", label: "Location" }, { key: "weather", label: "Weather" }, { key: "contacts", label: "Emergency contacts" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Notes" }],
 };
@@ -64,15 +64,16 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let selected: string | undefined = records[0]?.id;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let calendarMonth = new Date();
-  const savedRevisions = new Map(records.map(record => [record.id, record.updatedAt]));
+  const savedRevisions = new Map(records.map(record => [record.id, record.revision || 0]));
   let saveQueue = Promise.resolve();
   const ordered = () => [...records].sort((a, b) => (a.fields.order || a.createdAt).localeCompare(b.fields.order || b.createdAt));
   const persist = (record: ToolRecord) => {
     status.textContent = "Saving on this device…";
     const snapshot = { ...record, fields: { ...record.fields }, updatedAt: new Date().toISOString() };
     const task = saveQueue.then(async () => {
-      await saveToolRecord(userId, project.id, tool, snapshot, savedRevisions.get(record.id));
-      savedRevisions.set(record.id, snapshot.updatedAt);
+      const revision = await saveToolRecord(userId, project.id, tool, snapshot, savedRevisions.get(record.id) || 0);
+      savedRevisions.set(record.id, revision);
+      record.revision = revision;
       record.updatedAt = snapshot.updatedAt;
       if (isCurrent()) status.textContent = "Saved on this device · Cloud sync is not connected yet";
     });
@@ -108,9 +109,17 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLButtonElement>("[data-calendar-select]").forEach(button => button.onclick = () => { selected = button.dataset.calendarSelect; renderList(); renderEditor(); });
     };
     if (!record) { editor.innerHTML = `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>✦</span><h2>${name === "calendar" ? "No shoot days yet." : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : "Create an item to begin."}</p></div>`; wireCalendar(); return; }
-    const dataFields = fields[tool].filter(field => name !== "calendar" || ["date", "start", "end", "scene", "location", "status"].includes(field.key));
+    const dataFields = fields[tool].filter(field => name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key));
+    const valueFor = (key: string) => record.fields[key] || (tool === "schedule" ? ({
+      time: [record.fields.start, record.fields.end].filter(Boolean).join("–"),
+      sceneNumbers: record.fields.scene,
+      characters: record.fields.cast,
+      propsRequired: record.fields.props,
+      costumes: record.fields.wardrobe,
+      equipmentRequired: record.fields.equipment,
+    } as Record<string, string | undefined>)[key] || "" : "");
     const snapshot = tool === "call-sheets" && record.fields.published === "true";
-    editor.innerHTML = `${name === "calendar" ? calendarMarkup() : ""}<form id="tool-form" class="tool-form"><div class="tool-form-header"><label class="tool-title-label">${tool === "screenplay" ? "Element title" : tool === "schedule" ? "Schedule item" : "Title"}<input name="title" value="${escapeHtml(record.title)}" maxlength="160" ${snapshot ? "readonly" : ""} required></label><div class="tool-form-actions">${tool === "call-sheets" && !snapshot ? '<button type="button" id="tool-publish">Publish version</button>' : ""}${(tool === "screenplay" || tool === "shots" || tool === "storyboards") && !snapshot ? '<button type="button" id="tool-up" aria-label="Move item up">↑</button><button type="button" id="tool-down" aria-label="Move item down">↓</button>' : ""}<button type="button" id="tool-print">Print / PDF</button>${name !== "calendar" && !snapshot ? '<button type="button" id="tool-remove" class="danger-text">Delete</button>' : ""}</div></div>${snapshot ? '<p class="tool-published">Published snapshot · This version is read only.</p>' : ""}<div class="tool-fields">${dataFields.map(field => `<label>${escapeHtml(field.label)}${field.key === "kind" ? `<select name="kind">${kinds.map(kind => `<option value="${escapeHtml(kind)}" ${record.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)}</option>`).join("")}</select>` : ["text", "body", "description", "notes", "schedule"].includes(field.key) ? `<textarea name="${field.key}" rows="${field.key === "text" || field.key === "body" ? 13 : 4}" ${snapshot ? "readonly" : ""}>${escapeHtml(record.fields[field.key] || "")}</textarea>` : `<input name="${field.key}" type="${field.type || "text"}" value="${escapeHtml(record.fields[field.key] || "")}" ${snapshot ? "readonly" : ""}>`}</label>`).join("")}</div>${(tool === "shots" || tool === "storyboards") ? `<div class="tool-image-upload"><label>Upload reference image <input id="tool-image-file" type="file" accept="image/*"></label>${safeImage(record.fields.image || "") ? `<img alt="Reference image" src="${escapeHtml(safeImage(record.fields.image))}">` : ""}</div>` : ""}${tool === "screenplay" ? '<section class="tool-comments"><h2>Comments</h2><label>Comment on selected script text<textarea id="tool-comment-body" rows="2" placeholder="Leave a note for your crew"></textarea></label><button type="button" id="tool-comment-add">Add comment</button><div id="tool-comment-list"></div></section>' : ""}</form>`;
+    editor.innerHTML = `${name === "calendar" ? calendarMarkup() : ""}<form id="tool-form" class="tool-form"><div class="tool-form-header"><label class="tool-title-label">${tool === "screenplay" ? "Element title" : tool === "schedule" ? "Schedule item" : "Title"}<input name="title" value="${escapeHtml(record.title)}" maxlength="160" ${snapshot ? "readonly" : ""} required></label><div class="tool-form-actions">${tool === "call-sheets" && !snapshot ? '<button type="button" id="tool-publish">Publish version</button>' : ""}${(tool === "screenplay" || tool === "shots" || tool === "storyboards") && !snapshot ? '<button type="button" id="tool-up" aria-label="Move item up">↑</button><button type="button" id="tool-down" aria-label="Move item down">↓</button>' : ""}<button type="button" id="tool-print">Print / PDF</button>${name !== "calendar" && !snapshot ? '<button type="button" id="tool-remove" class="danger-text">Delete</button>' : ""}</div></div>${snapshot ? '<p class="tool-published">Published snapshot · This version is read only.</p>' : ""}<div class="tool-fields">${dataFields.map(field => `<label>${escapeHtml(field.label)}${field.key === "kind" ? `<select name="kind">${kinds.map(kind => `<option value="${escapeHtml(kind)}" ${record.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)}</option>`).join("")}</select>` : ["text", "body", "description", "notes", "schedule"].includes(field.key) ? `<textarea name="${field.key}" rows="${field.key === "text" || field.key === "body" ? 13 : 4}" ${snapshot ? "readonly" : ""}>${escapeHtml(valueFor(field.key))}</textarea>` : `<input name="${field.key}" type="${field.type || "text"}" value="${escapeHtml(valueFor(field.key))}" ${snapshot ? "readonly" : ""}>`}</label>`).join("")}</div>${(tool === "shots" || tool === "storyboards") ? `<div class="tool-image-upload"><label>Upload reference image <input id="tool-image-file" type="file" accept="image/*"></label>${safeImage(record.fields.image || "") ? `<img alt="Reference image" src="${escapeHtml(safeImage(record.fields.image))}">` : ""}</div>` : ""}${tool === "screenplay" ? '<section class="tool-comments"><h2>Comments</h2><label>Comment on selected script text<textarea id="tool-comment-body" rows="2" placeholder="Leave a note for your crew"></textarea></label><button type="button" id="tool-comment-add">Add comment</button><div id="tool-comment-list"></div></section>' : ""}</form>`;
     wireCalendar();
     const form = editor.querySelector<HTMLFormElement>("#tool-form")!;
     if (!snapshot) form.addEventListener("input", () => {
@@ -195,7 +204,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     record.fields.order = String(records.length).padStart(6, "0");
     if (tool === "call-sheets") {
       const schedule = await toolRecords(userId, project.id, "schedule");
-      record.fields.schedule = schedule.map(item => `${item.fields.date || ""} ${item.fields.start || ""} ${item.title} — ${item.fields.location || ""}`).join("\n");
+      record.fields.schedule = schedule.map(item => `${item.fields.date || ""} ${item.fields.time || item.fields.start || ""} ${item.title} — ${item.fields.location || ""}`).join("\n");
     }
     records.push(record); selected = record.id; await persist(record); renderList(); renderEditor();
     editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
