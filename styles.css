@@ -81,3 +81,52 @@
 @media(max-width:900px){.film-frames{opacity:.42;right:-9%;width:55%}.landing .hero h1{font-size:clamp(64px,11vw,100px)}.app-shell{grid-template-columns:155px 1fr}.side-signoff{display:none}}
 @media(max-width:720px){.landing .hero{min-height:630px;padding:95px 24px 70px;background-position:60% center}.landing .hero h1{font-size:clamp(54px,13vw,80px)}.landing .hero .lede{font-size:16px}.film-frames{right:-30%;top:51%;width:88%;height:220px;opacity:.24}.film-frames i{height:70%}.hero-count{bottom:30px}.landing .public-section{padding:55px 24px}.app-shell{display:block}.side-nav{padding:8px 18px}.side-nav a{white-space:nowrap}.home{padding:0 18px 40px}.cinema-banner{margin:0 -18px 22px;padding:30px 22px;height:210px;background-position:40% center}.cinema-banner h1{font-size:50px}.section-heading{display:block}#new-project{margin-top:14px}.project-grid{grid-template-columns:1fr}.project-grid .project-card:only-child .project-thumb{width:35%}.tool-grid{grid-template-columns:repeat(2,1fr)}.schedule-panel{grid-template-columns:1fr}.schedule-visual{height:180px}}
 @media(prefers-reduced-motion:reduce){.film-frames i{animation:none}}
+
+/* Owner-approved cinematic landing: image is artwork; all words and actions remain HTML. */
+.is-landing .topbar{position:absolute;inset:0 0 auto;height:92px;padding:0 4.6%;border:0;background:transparent;z-index:20}
+.is-landing .logo{color:#1b282b;font-size:17px;letter-spacing:.48em;gap:19px;white-space:nowrap}
+.is-landing .logo svg{width:32px;height:28px;stroke:#1b282b}
+.is-landing .topbar nav{flex:1;justify-content:flex-end}
+.public-nav-center{position:absolute;left:50%;translate:-50% 0;display:flex;gap:39px;align-items:center;white-space:nowrap}
+.public-nav-actions{display:flex;gap:38px;align-items:center;white-space:nowrap}
+.is-landing .topbar a{font-size:15px;font-weight:400;color:#313b3d}
+.is-landing .topbar .public-nav-actions a{color:#f1f5f4}
+.is-landing .topbar .public-nav-actions .button{padding:12px 25px;border:0;background:#5b8491;color:#fff;border-radius:28px}
+.landing-stage{position:relative;height:100svh;min-height:850px;overflow:hidden;background:#f6f5f1}
+.landing-art{position:absolute;inset:0;background:url('./assets/landing-cinema.png') center center/cover no-repeat;animation:cinema-reveal 1100ms cubic-bezier(.2,.7,.2,1) both}
+.landing-center-rule{position:absolute;top:0;bottom:27%;left:50%;width:1px;background:#19292a36;pointer-events:none}
+.landing-copy{position:absolute;z-index:2;top:19%;left:5%;max-width:650px}
+.landing-copy .eyebrow{margin:0 0 28px;font:400 11px/1.2 ui-sans-serif,system-ui,sans-serif;letter-spacing:.43em;color:#6b777b}
+.landing-copy .eyebrow span{padding:0 11px;letter-spacing:0;font-size:15px}
+.landing-copy h1{margin:0;font:400 clamp(72px,7vw,110px)/.82 Georgia,'Times New Roman',serif;letter-spacing:-.063em;color:#1c292c;white-space:nowrap}
+.landing-copy h1 em{color:#567f8b;font-style:normal}
+.landing-copy .lede{margin:31px 0 36px;color:#3c474b;font-size:19px;line-height:1.48;max-width:570px}
+.landing-copy .actions{display:flex;align-items:center;gap:35px}
+.landing-copy .button{display:inline-flex;gap:23px;align-items:center;padding:15px 39px 16px 43px;background:#17272b;border-color:#17272b;border-radius:30px;color:#fff;font-size:15px;font-weight:400;min-width:205px;justify-content:center}
+.watch-video{display:inline-flex;align-items:center;gap:14px;border:0;background:transparent;color:#415054;font:400 15px ui-sans-serif,system-ui,sans-serif;opacity:1;cursor:not-allowed;padding:0}
+.play-ring{display:grid;place-items:center;width:42px;height:42px;border:1px solid #687478;border-radius:50%;font-size:12px;color:#25363b;padding-left:2px}
+.landing-frame-index{position:absolute;z-index:2;right:41%;bottom:38%;color:#dce5e4;letter-spacing:.33em;font-size:12px;display:flex;align-items:center;gap:18px}
+.landing-frame-index span{width:33px;height:1px;background:#dce5e480}
+.landing-quote{position:absolute;right:5.4%;top:56.5%;margin:0;color:#dce5e2c7;border-left:1px solid #dce5e280;padding-left:16px;font:italic 14px/1.7 Georgia,serif}
+.landing-feature-strip{position:absolute;z-index:2;left:4.5%;right:4.3%;bottom:17.8%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 118px;gap:22px;align-items:start;color:#dce9e9}
+.landing-feature{display:flex;gap:20px;min-width:0;animation:feature-reveal 650ms ease-out both}
+.landing-feature:nth-child(2){animation-delay:90ms}.landing-feature:nth-child(3){animation-delay:180ms}.landing-feature:nth-child(4){animation-delay:270ms}
+.feature-icon{flex:none;color:#96bdc5;font:32px/1 ui-sans-serif,system-ui,sans-serif;width:36px;text-align:center}
+.landing-feature strong{display:block;margin:0 0 9px;font-size:13px;font-weight:500;letter-spacing:.24em;white-space:nowrap}
+.landing-feature small{display:block;font-size:13px;color:#a9b8ba;white-space:nowrap}
+.feature-aside{display:block;border-left:1px solid #8fa4a380;padding-left:18px;color:#8d9e9f;font-size:10px;line-height:1.45;letter-spacing:.29em}
+.landing-bottom-mark{position:absolute;z-index:2;left:4.5%;right:4.4%;bottom:3.7%;display:flex;align-items:end;justify-content:space-between;color:#87999b;font-size:11px;letter-spacing:.36em}
+.landing-bottom-mark>span:first-child{font:400 18px Georgia,serif;letter-spacing:.45em;margin-left:10%}
+.landing-bottom-mark>a{color:#aebfc0;text-decoration:none;font-size:11px;display:flex;gap:18px;align-items:center}
+.landing-bottom-mark>a span{display:grid;place-items:center;border:1px solid #9eafb0;border-radius:50%;width:30px;height:30px;font-size:13px;letter-spacing:0}
+.landing #features{padding-top:105px}
+@keyframes cinema-reveal{from{opacity:.7;scale:1.025}to{opacity:1;scale:1}}
+@keyframes feature-reveal{from{opacity:0;translate:0 12px}to{opacity:1;translate:0 0}}
+@media(max-width:1050px){.landing-copy{top:20%;left:4%}.landing-copy h1{font-size:clamp(66px,7.3vw,88px)}.landing-copy .lede{font-size:17px}.landing-feature-strip{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.feature-aside{display:none}.landing-feature{gap:10px}.landing-feature strong{font-size:11px}.landing-feature small{font-size:11px}.landing-quote{display:none}}
+@media(max-width:720px){.is-landing .topbar{height:112px;align-items:flex-start;padding:22px 22px 0}.is-landing .logo{font-size:13px;letter-spacing:.3em;gap:8px}.is-landing .logo svg{width:27px}.is-landing .topbar nav{position:static}.public-nav-center{left:22px;top:80px;translate:none;gap:22px}.public-nav-actions{gap:10px}.is-landing .topbar a{font-size:12px}.is-landing .topbar .public-nav-actions .button{padding:9px 11px}.landing-stage{height:auto;min-height:920px}.landing-art{background-position:32% center}.landing-stage::before{content:"";position:absolute;inset:0 0 40%;z-index:1;background:linear-gradient(90deg,#f7f7f2f0,#f7f7f2c4 75%,transparent);pointer-events:none}.landing-center-rule{display:none}.landing-copy{top:168px;left:24px;right:20px}.landing-copy .eyebrow{font-size:9px;letter-spacing:.25em;margin-bottom:23px}.landing-copy .eyebrow span{padding:0 5px}.landing-copy h1{font-size:clamp(52px,12vw,78px);white-space:normal}.landing-copy .lede{font-size:15px;line-height:1.45;margin:24px 0 26px}.desktop-break{display:none}.landing-copy .actions{gap:16px}.landing-copy .button{min-width:0;padding:12px 20px;font-size:12px;gap:10px}.watch-video{font-size:12px;gap:7px}.play-ring{width:34px;height:34px}.landing-frame-index{display:none}.landing-feature-strip{left:24px;right:24px;bottom:125px;grid-template-columns:repeat(2,minmax(0,1fr));row-gap:24px}.landing-feature{gap:8px}.feature-icon{width:25px;font-size:24px}.landing-feature strong{font-size:10px;letter-spacing:.1em}.landing-feature small{font-size:10px;white-space:normal}.landing-bottom-mark{left:24px;right:24px;bottom:30px;font-size:8px}.landing-bottom-mark>span:first-child{display:none}.landing-bottom-mark>span:nth-child(2){letter-spacing:.17em}.landing #features{padding-top:60px}}
+@media(prefers-reduced-motion:reduce){.landing-art,.landing-feature{animation:none!important}}
+@media(max-width:720px){
+  .is-landing .topbar nav .plain-link{display:inline;color:#263539}
+  .is-landing .topbar .public-nav-actions .button{color:#fff}
+  .landing-stage::after{content:"";position:absolute;z-index:1;left:0;right:0;bottom:0;height:34%;background:linear-gradient(transparent,#11191a 24%,#11191a 80%,#101819e0);pointer-events:none}
+}
