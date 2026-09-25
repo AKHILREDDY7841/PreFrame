@@ -9,8 +9,8 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   shots: [{ key: "scene", label: "Scene" }, { key: "description", label: "Description" }, { key: "size", label: "Shot size" }, { key: "type", label: "Shot type" }, { key: "movement", label: "Movement" }, { key: "estimate", label: "Est. time" }, { key: "image", label: "Image URL", type: "url" }],
   storyboards: [{ key: "shot", label: "Shot" }, { key: "description", label: "Description" }, { key: "sound", label: "Sound effects" }, { key: "video", label: "Video reference URL", type: "url" }, { key: "image", label: "Image URL", type: "url" }],
   schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "sceneNumbers", label: "Scene Number(s)" }, { key: "scriptPages", label: "Script Pages" }, { key: "location", label: "Location" }, { key: "time", label: "Time" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "propsRequired", label: "Props Required" }, { key: "costumes", label: "Costumes" }, { key: "equipmentRequired", label: "Equipment Required" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "backupStatus", label: "Backup Status" }, { key: "notes", label: "Notes" }],
-  locations: [{ key: "address", label: "Address" }, { key: "contact", label: "Contact" }, { key: "phone", label: "Phone" }, { key: "permit", label: "Permit status" }, { key: "access", label: "Access / parking" }, { key: "notes", label: "Notes" }],
-  "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "location", label: "Location" }, { key: "weather", label: "Weather" }, { key: "contacts", label: "Emergency contacts" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Notes" }],
+  locations: [{ key: "address", label: "Address" }, { key: "contact", label: "Contact" }, { key: "phone", label: "Phone" }, { key: "permit", label: "Permission / permit details" }, { key: "availability", label: "Available dates and times" }, { key: "interiorExterior", label: "Interior / exterior" }, { key: "access", label: "Access / parking" }, { key: "travel", label: "Travel and logistics" }, { key: "safety", label: "Safety / contingency" }, { key: "notes", label: "Notes" }],
+  "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "wrap", label: "Estimated wrap", type: "time" }, { key: "location", label: "Location" }, { key: "address", label: "Address / access instructions" }, { key: "weather", label: "Weather (manual, with source/date)" }, { key: "castCalls", label: "Cast calls / makeup" }, { key: "crewCalls", label: "Crew and department calls" }, { key: "meals", label: "Meals / breaks" }, { key: "moves", label: "Company moves / parking" }, { key: "contacts", label: "Emergency contacts (verified)" }, { key: "hospital", label: "Nearest hospital (verified)" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Important notes / requirements" }],
 };
 export const screenplayKinds = ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"] as const;
 export const localDateISO = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -40,6 +40,7 @@ const shotChoices: Record<string, string[]> = {
   type: ["Eye level", "Low angle", "High angle", "Over the shoulder", "Point of view", "Aerial", "Dutch angle"],
   movement: ["Static", "Pan", "Tilt", "Dolly", "Tracking", "Handheld", "Crane", "Zoom"],
 };
+const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "In Progress", "Completed"], backupStatus: ["Pending", "In Progress", "Verified"] };
 function shotChoice(key: string, value: string): string {
   const custom = Boolean(value && !shotChoices[key].includes(value));
   return `<label>${key === "size" ? "Shot size" : key === "type" ? "Shot type" : "Movement"}<select data-shot-choice="${key}" aria-label="${key === "size" ? "Shot size" : key === "type" ? "Shot type" : "Movement"}"><option value="">Select…</option>${shotChoices[key].map(choice => `<option value="${escapeHtml(choice)}" ${choice === value ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}<option value="custom" ${custom ? "selected" : ""}>Custom…</option></select><input name="${key}" value="${escapeHtml(value)}" placeholder="Enter custom ${key}" ${custom ? "" : "hidden"}></label>`;
@@ -85,6 +86,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   const isCurrent = () => document.querySelector<HTMLElement>(".tool-page")?.dataset.project === project.id && document.querySelector<HTMLElement>(".tool-page")?.dataset.tool === name;
   let records = await toolRecords(userId, project.id, tool);
   const screenplayScenes = tool === "shots" || tool === "storyboards" ? (await toolRecords(userId, project.id, "screenplay")).filter(item => item.fields.kind === "Scene Heading") : [];
+  const projectShots = tool === "storyboards" ? await toolRecords(userId, project.id, "shots") : [];
   if (!isCurrent()) return;
   let selected: string | undefined = records[0]?.id;
   let activeScene = "all";
@@ -128,6 +130,35 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   };
   const renderEditor = () => {
     const record = records.find(item => item.id === selected);
+    const scheduleBoard = () => {
+      const items = ordered();
+      const byDay = new Map<string, ToolRecord[]>();
+      for (const item of items) { const key = item.fields.date || item.id; byDay.set(key, [...(byDay.get(key) || []), item]); }
+      const total = byDay.size;
+      const completed = [...byDay.values()].filter(day => day.every(item => item.fields.status === "Completed")).length;
+      const percentage = total ? Math.round(completed / total * 100) : 0;
+      const columns = fields.schedule.map(field => field.label);
+      const choice = (item: ToolRecord, key: string) => `<select data-schedule-choice="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(key)}">${scheduleChoices[key].map(value => `<option value="${value}" ${(item.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
+      const cell = (item: ToolRecord, key: string) => scheduleChoices[key] ? choice(item, key) : escapeHtml(item.fields[key] || "—");
+      return `<div class="schedule-board"><div class="schedule-summary"><div><small>Total days</small><strong>${total}</strong></div><div><small>Completed</small><strong>${completed}</strong></div><div><small>Remaining</small><strong>${total - completed}</strong></div><div><small>Completion</small><strong>${percentage}%</strong></div><div class="schedule-progress"><span>Progress</span><div role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${percentage}%"></i></div></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${fields.schedule.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
+    };
+    const wireScheduleBoard = () => {
+      const chooseDay = (id: string | undefined) => {
+        selected = id; renderList(); renderEditor();
+        editor.querySelector("#tool-form")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+      };
+      editor.querySelectorAll<HTMLTableRowElement>("[data-schedule-select]").forEach(row => {
+        row.onclick = event => { if ((event.target as HTMLElement).closest("select")) return; chooseDay(row.dataset.scheduleSelect); };
+        row.onkeydown = event => { if (event.key === "Enter" && !(event.target as HTMLElement).closest("select")) chooseDay(row.dataset.scheduleSelect); };
+      });
+      editor.querySelectorAll<HTMLSelectElement>("[data-schedule-choice]").forEach(select => select.onchange = async () => {
+        const item = records.find(candidate => candidate.id === select.dataset.recordId);
+        if (!item) return;
+        item.fields[select.dataset.scheduleChoice!] = select.value;
+        try { await persist(item); renderEditor(); }
+        catch (error) { status.textContent = error instanceof Error ? error.message : "Could not save schedule"; }
+      });
+    };
     const visualBoard = () => {
       const visible = ordered().filter(item => activeScene === "all" || item.fields.sceneId === activeScene);
       const sceneLabel = (item: ToolRecord) => screenplayScenes.find(scene => scene.id === item.fields.sceneId)?.fields.text || "Ungrouped";
@@ -135,10 +166,13 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       if (tool === "storyboards") return `<div class="storyboard-board"><div class="visual-board-head"><strong>Storyboard</strong><span>${visible.length} ${visible.length === 1 ? "frame" : "frames"}</span></div><div class="storyboard-grid">${visible.map((item, index) => `<button type="button" class="storyboard-card ${item.id === selected ? "selected" : ""}" data-visual-select="${escapeHtml(item.id)}"><span class="storyboard-card-title">${escapeHtml(sceneLabel(item))} · Frame ${index + 1}</span><span class="storyboard-card-image">${safeImage(item.fields.image || "") ? `<img alt="Frame reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span aria-hidden="true">▧</span>'}</span><span class="storyboard-card-line">${escapeHtml(item.fields.description || "Description…")}</span><span class="storyboard-card-line">♫ ${escapeHtml(item.fields.sound || "Sound effects…")}</span><span class="storyboard-card-line">▣ ${escapeHtml(item.fields.video || "Video reference…")}</span></button>`).join("") || '<p class="visual-board-empty">No frames in this scene. Add one to begin.</p>'}</div></div>`;
       return "";
     };
-    const wireVisualBoard = () => editor.querySelectorAll<HTMLElement>("[data-visual-select]").forEach(item => {
+    const wireVisualBoard = () => {
+      editor.querySelectorAll<HTMLTableRowElement>(".shot-table tbody tr[data-visual-select]").forEach(row => row.querySelectorAll("td").forEach((cell, index) => { cell.dataset.label = ["Image", "Shot", "Description", "Shot size", "Shot type", "Movement", "Est. time"][index]; }));
+      editor.querySelectorAll<HTMLElement>("[data-visual-select]").forEach(item => {
       item.onclick = () => { selected = item.dataset.visualSelect; renderEditor(); };
       item.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selected = item.dataset.visualSelect; renderEditor(); } };
-    });
+      });
+    };
     const calendarMarkup = () => {
       const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
       const moveLabel = calendarView === "month" ? calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" }) : calendarView === "week" || calendarView === "timeline" ? `Week of ${new Date(year, month, calendarMonth.getDate() - calendarMonth.getDay()).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}` : calendarMonth.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -176,13 +210,14 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLButtonElement>("[data-calendar-select]").forEach(button => button.onclick = () => { selected = button.dataset.calendarSelect; renderList(); renderEditor(); });
     };
     if (!record) {
-      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}${tool === "shots" || tool === "storyboards" ? visualBoard() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
+      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}${tool === "schedule" && name !== "calendar" ? scheduleBoard() : ""}${tool === "shots" || tool === "storyboards" ? visualBoard() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
       editor.querySelector("#script-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
+      wireScheduleBoard();
       wireCalendar(); return;
     }
-    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene"));
+    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene") && !(tool === "storyboards" && field.key === "shot"));
     const valueFor = (key: string) => record.fields[key] || (tool === "schedule" ? ({
       time: [record.fields.start, record.fields.end].filter(Boolean).join("–"),
       sceneNumbers: record.fields.scene,
@@ -200,11 +235,24 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const sceneField = document.createElement("label");
       sceneField.innerHTML = `Scene<select name="sceneId"><option value="">Ungrouped</option>${screenplayScenes.map(scene => `<option value="${escapeHtml(scene.id)}" ${record.fields.sceneId === scene.id ? "selected" : ""}>${escapeHtml(scene.fields.text || scene.title)}</option>`).join("")}</select>`;
       fieldGrid.prepend(sceneField);
+      if (tool === "storyboards") {
+        const shotField = document.createElement("label");
+        shotField.innerHTML = `Linked shot<select name="shotId"><option value="">No linked shot</option>${projectShots.map(shot => `<option value="${escapeHtml(shot.id)}" ${record.fields.shotId === shot.id ? "selected" : ""}>${escapeHtml(shot.title)}${shot.fields.description ? ` — ${escapeHtml(shot.fields.description.slice(0, 50))}` : ""}</option>`).join("")}</select>`;
+        sceneField.after(shotField);
+      }
       if (tool === "shots") for (const key of ["size", "type", "movement"]) {
         const input = fieldGrid.querySelector<HTMLInputElement>(`input[name="${key}"]`);
         if (input) input.closest("label")!.outerHTML = shotChoice(key, record.fields[key] || "");
       }
       wireVisualBoard();
+    }
+    if (tool === "schedule" && name !== "calendar") {
+      editor.insertAdjacentHTML("afterbegin", scheduleBoard());
+      for (const key of ["priority", "status", "backupStatus"]) {
+        const input = editor.querySelector<HTMLInputElement>(`.tool-fields input[name="${key}"]`);
+        if (input) input.outerHTML = `<select name="${key}">${scheduleChoices[key].map(value => `<option value="${value}" ${(record.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
+      }
+      wireScheduleBoard();
     }
     wireCalendar();
     const form = editor.querySelector<HTMLFormElement>("#tool-form")!;
@@ -231,6 +279,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       if (name === "calendar") { const board = editor.querySelector(".calendar-board"); if (board) { board.outerHTML = calendarMarkup(); wireCalendar(); } }
       clearTimeout(timer);
       timer = setTimeout(() => persist(record).then(() => {
+        if (tool === "schedule" && name !== "calendar") { const board = editor.querySelector(".schedule-board"); if (board) { board.outerHTML = scheduleBoard(); wireScheduleBoard(); } }
         if (tool === "shots" || tool === "storyboards") {
           const board = editor.querySelector(".shot-board, .storyboard-board");
           if (board) { board.outerHTML = visualBoard(); wireVisualBoard(); }
@@ -330,7 +379,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
     const prior = records.find(item => item.id === selected);
     const nextKind = records.length === 0 ? "Scene Heading" : prior?.fields.kind === "Character" ? "Dialogue" : "Action";
-    const defaults: Record<string, string> = tool === "screenplay" ? { kind: nextKind, text: "" } : tool === "schedule" ? { date: localDateISO(new Date()) } : tool === "shots" || tool === "storyboards" ? { sceneId: activeScene === "all" ? "" : activeScene } : {};
+    const defaults: Record<string, string> = tool === "screenplay" ? { kind: nextKind, text: "" } : tool === "schedule" ? { date: localDateISO(new Date()), priority: "Medium", status: "Not Started", backupStatus: "Pending" } : tool === "shots" || tool === "storyboards" ? { sceneId: activeScene === "all" ? "" : activeScene } : {};
     const documentName = tool === "notes" ? prompt("Name your new document") : null;
     if (tool === "notes" && documentName === null) return;
     if (tool === "notes" && !documentName?.trim()) { status.textContent = "Enter a document name to begin."; return; }
