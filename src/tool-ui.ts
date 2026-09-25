@@ -91,6 +91,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let selected: string | undefined = records[0]?.id;
   let activeScene = "all";
   let calendarView: "timeline" | "month" | "week" | "day" = "timeline";
+  const scheduleViewKey = `preframe-schedule-fields:${userId}:${project.id}`;
+  let savedScheduleFields: string[] | null = null;
+  try { const stored = JSON.parse(localStorage.getItem(scheduleViewKey) || "null"); if (Array.isArray(stored)) savedScheduleFields = stored.filter((key): key is string => typeof key === "string"); } catch { /* Use the full schedule view. */ }
+  let scheduleVisible = new Set(savedScheduleFields || fields.schedule.map(field => field.key));
+  for (const key of ["day", "date"]) scheduleVisible.add(key);
+  let scheduleChooserOpen = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let calendarMonth = new Date();
   const savedRevisions = new Map(records.map(record => [record.id, record.revision || 0]));
@@ -137,12 +143,23 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const total = byDay.size;
       const completed = [...byDay.values()].filter(day => day.every(item => item.fields.status === "Completed")).length;
       const percentage = total ? Math.round(completed / total * 100) : 0;
-      const columns = fields.schedule.map(field => field.label);
+      const visibleFields = fields.schedule.filter(field => scheduleVisible.has(field.key));
+      const columns = visibleFields.map(field => field.label);
       const choice = (item: ToolRecord, key: string) => `<select data-schedule-choice="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(key)}">${scheduleChoices[key].map(value => `<option value="${value}" ${(item.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
       const cell = (item: ToolRecord, key: string) => scheduleChoices[key] ? choice(item, key) : escapeHtml(item.fields[key] || "—");
-      return `<div class="schedule-board"><div class="schedule-summary"><div><small>Total days</small><strong>${total}</strong></div><div><small>Completed</small><strong>${completed}</strong></div><div><small>Remaining</small><strong>${total - completed}</strong></div><div><small>Completion</small><strong>${percentage}%</strong></div><div class="schedule-progress"><span>Progress</span><div role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${percentage}%"></i></div></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${fields.schedule.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
+      return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total days</small><strong>${total}</strong></div><div><small>Completed</small><strong>${completed}</strong></div><div><small>Remaining</small><strong>${total - completed}</strong></div><div><small>Completion</small><strong>${percentage}%</strong></div><div class="schedule-progress"><span>Progress</span><div role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${percentage}%"></i></div></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
     };
     const wireScheduleBoard = () => {
+      editor.querySelector<HTMLDetailsElement>(".schedule-field-chooser")?.addEventListener("toggle", event => { scheduleChooserOpen = (event.currentTarget as HTMLDetailsElement).open; });
+      editor.querySelectorAll<HTMLInputElement>("[data-schedule-visible]").forEach(input => input.onchange = () => {
+        if (input.checked) scheduleVisible.add(input.dataset.scheduleVisible!); else scheduleVisible.delete(input.dataset.scheduleVisible!);
+        localStorage.setItem(scheduleViewKey, JSON.stringify([...scheduleVisible]));
+        scheduleChooserOpen = true; renderEditor();
+      });
+      editor.querySelector<HTMLButtonElement>("[data-schedule-show-all]")?.addEventListener("click", () => {
+        scheduleVisible = new Set(fields.schedule.map(field => field.key));
+        localStorage.removeItem(scheduleViewKey); scheduleChooserOpen = true; renderEditor();
+      });
       const chooseDay = (id: string | undefined) => {
         selected = id; renderList(); renderEditor();
         editor.querySelector("#tool-form")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
@@ -217,7 +234,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       wireScheduleBoard();
       wireCalendar(); return;
     }
-    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene") && !(tool === "storyboards" && field.key === "shot"));
+    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene") && !(tool === "storyboards" && field.key === "shot") && !(tool === "schedule" && name !== "calendar" && !scheduleVisible.has(field.key)));
     const valueFor = (key: string) => record.fields[key] || (tool === "schedule" ? ({
       time: [record.fields.start, record.fields.end].filter(Boolean).join("–"),
       sceneNumbers: record.fields.scene,
