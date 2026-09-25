@@ -106,6 +106,14 @@ async function render(){
     }
   }catch(e){root.innerHTML=shell(`<main class="empty-workspace"><h1>Could not load Preframe</h1><p>${esc(e instanceof Error?e.message:"Unknown error")}</p>${link("/app","Retry","button")}</main>`,!!session||preview);}
   document.querySelectorAll<HTMLAnchorElement>("[data-route]").forEach(a=>a.addEventListener("click",e=>{if(a.origin===location.origin){e.preventDefault();history.pushState({},"",a.href);errorMessage="";render();}}));
+  document.querySelectorAll<HTMLAnchorElement>("[data-home-anchor]").forEach(anchor=>anchor.addEventListener("click",event=>{
+    const id=anchor.dataset.homeAnchor;
+    const target=id&&document.getElementById(id);
+    if(!target)return;
+    event.preventDefault();
+    history.replaceState({},"",`${location.pathname}#${id}`);
+    target.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",block:"start"});
+  }));
   document.querySelector("#google-login")?.addEventListener("click",async()=>{sessionStorage.removeItem("preframe-preview");sessionStorage.setItem("preframe-oauth-pending","1");const {error}=await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:`${location.origin}${href("/")}`,queryParams:{prompt:"select_account"}}});if(error){sessionStorage.removeItem("preframe-oauth-pending");errorMessage=error.message;render();}});
   document.querySelector("#sign-out")?.addEventListener("click",async()=>{await supabase.auth.signOut();sessionStorage.removeItem("preframe-preview");history.pushState({},"",href("/"));render();});
   document.body.classList.toggle("eye-saver",Boolean(document.querySelector("#eye"))&&localStorage.getItem("preframe-eye-saver")==="true");

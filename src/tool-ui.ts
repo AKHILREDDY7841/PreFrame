@@ -41,6 +41,20 @@ const shotChoices: Record<string, string[]> = {
   movement: ["Static", "Pan", "Tilt", "Dolly", "Tracking", "Handheld", "Crane", "Zoom"],
 };
 const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "In Progress", "Completed"], backupStatus: ["Pending", "In Progress", "Verified"] };
+export type ScheduleProgress = { total: number; completed: number; remaining: number; percentage: number; inProgress: number };
+/** A shoot day is a shared Day label first, then a shared date. A day is complete only when every entry on it is complete. */
+export function scheduleProgress(records: ToolRecord[]): ScheduleProgress {
+  const days = new Map<string, ToolRecord[]>();
+  for (const record of records) {
+    const key = record.fields.day?.trim() ? `day:${record.fields.day.trim()}` : record.fields.date ? `date:${record.fields.date}` : `entry:${record.id}`;
+    days.set(key, [...(days.get(key) || []), record]);
+  }
+  const grouped = [...days.values()];
+  const completed = grouped.filter(day => day.every(record => record.fields.status === "Completed")).length;
+  const inProgress = grouped.filter(day => !day.every(record => record.fields.status === "Completed") && day.some(record => record.fields.status === "In Progress")).length;
+  const total = grouped.length;
+  return { total, completed, remaining: total - completed, percentage: total ? Math.round(completed / total * 100) : 0, inProgress };
+}
 function shotChoice(key: string, value: string): string {
   const custom = Boolean(value && !shotChoices[key].includes(value));
   return `<label>${key === "size" ? "Shot size" : key === "type" ? "Shot type" : "Movement"}<select data-shot-choice="${key}" aria-label="${key === "size" ? "Shot size" : key === "type" ? "Shot type" : "Movement"}"><option value="">Select…</option>${shotChoices[key].map(choice => `<option value="${escapeHtml(choice)}" ${choice === value ? "selected" : ""}>${escapeHtml(choice)}</option>`).join("")}<option value="custom" ${custom ? "selected" : ""}>Custom…</option></select><input name="${key}" value="${escapeHtml(value)}" placeholder="Enter custom ${key}" ${custom ? "" : "hidden"}></label>`;
@@ -138,16 +152,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     const record = records.find(item => item.id === selected);
     const scheduleBoard = () => {
       const items = ordered();
-      const byDay = new Map<string, ToolRecord[]>();
-      for (const item of items) { const key = item.fields.date || item.id; byDay.set(key, [...(byDay.get(key) || []), item]); }
-      const total = byDay.size;
-      const completed = [...byDay.values()].filter(day => day.every(item => item.fields.status === "Completed")).length;
-      const percentage = total ? Math.round(completed / total * 100) : 0;
+      const progress = scheduleProgress(items);
       const visibleFields = fields.schedule.filter(field => scheduleVisible.has(field.key));
       const columns = visibleFields.map(field => field.label);
       const choice = (item: ToolRecord, key: string) => `<select data-schedule-choice="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(key)}">${scheduleChoices[key].map(value => `<option value="${value}" ${(item.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
       const cell = (item: ToolRecord, key: string) => scheduleChoices[key] ? choice(item, key) : escapeHtml(item.fields[key] || "—");
-      return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total days</small><strong>${total}</strong></div><div><small>Completed</small><strong>${completed}</strong></div><div><small>Remaining</small><strong>${total - completed}</strong></div><div><small>Completion</small><strong>${percentage}%</strong></div><div class="schedule-progress"><span>Progress</span><div role="progressbar" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${percentage}%"></i></div></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
+      return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total shoot days</small><strong>${progress.total}</strong></div><div><small>Completed</small><strong>${progress.completed}</strong></div><div><small>Remaining</small><strong>${progress.remaining}</strong></div><div><small>Completion</small><strong>${progress.percentage}%</strong></div><div class="schedule-progress"><span>${progress.inProgress ? `${progress.inProgress} in progress · ` : ""}Progress</span><div role="progressbar" aria-valuenow="${progress.percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${progress.percentage}%"></i></div><small>Each Day label or date is counted once. A day completes when every entry is marked Completed.</small></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
     };
     const wireScheduleBoard = () => {
       editor.querySelector<HTMLDetailsElement>(".schedule-field-chooser")?.addEventListener("toggle", event => { scheduleChooserOpen = (event.currentTarget as HTMLDetailsElement).open; });
