@@ -2,7 +2,7 @@ export type UUID = string;
 export type Tier = "free" | "premium" | "admin";
 export type MemberRole = "owner" | "editor";
 
-export interface Project { id: UUID; ownerId: UUID; title: string; timezone: string; revision: number; updatedAt: string; sample?: boolean; }
+export interface Project { id: UUID; ownerId: UUID; title: string; timezone: string; revision: number; updatedAt: string; coverPath?: string; coverUrl?: string; sample?: boolean; }
 export interface ScreenplayDraft { id: UUID; projectId: UUID; title: string; revision: number; }
 export interface ScreenplayBlock { id: UUID; draftId: UUID; kind: string; text: string; revision: number; }
 export interface Scene { id: UUID; projectId: UUID; heading: string; displayNumber: number; }
