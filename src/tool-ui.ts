@@ -1,3 +1,6 @@
+import { mountNoteEditor } from "./note-editor.js";
+import { studioDocument } from "./studio-documents.js";
+import { studioShell } from "./studio-shell.js";
 import type { Project } from "./domain.js";
 import { deleteToolRecord, newToolRecord, saveToolRecord, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
 
@@ -8,7 +11,7 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   notes: [{ key: "body", label: "Note" }],
   shots: [{ key: "scene", label: "Scene" }, { key: "description", label: "Description" }, { key: "size", label: "Shot size" }, { key: "type", label: "Shot type" }, { key: "movement", label: "Movement" }, { key: "estimate", label: "Est. time" }, { key: "image", label: "Image URL", type: "url" }],
   storyboards: [{ key: "shot", label: "Shot" }, { key: "description", label: "Description" }, { key: "sound", label: "Sound effects" }, { key: "video", label: "Video reference URL", type: "url" }, { key: "image", label: "Image URL", type: "url" }],
-  schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "location", label: "Location" }, { key: "scenes", label: "Scene(s)" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "props", label: "Props" }, { key: "costumes", label: "Costumes" }, { key: "equipment", label: "Equipment" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "postStatus", label: "Post Status" }, { key: "notes", label: "Notes" }],
+  schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "location", label: "Location" }, { key: "scenes", label: "Scene(s)" }, { key: "scriptPages", label: "Script Pages" }, { key: "time", label: "Time" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "props", label: "Props" }, { key: "costumes", label: "Costumes" }, { key: "equipment", label: "Equipment" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "postStatus", label: "Backup Status" }, { key: "notes", label: "Notes" }],
   locations: [{ key: "address", label: "Address" }, { key: "contact", label: "Contact" }, { key: "phone", label: "Phone" }, { key: "permit", label: "Permission / permit details" }, { key: "availability", label: "Available dates and times" }, { key: "interiorExterior", label: "Interior / exterior" }, { key: "access", label: "Access / parking" }, { key: "travel", label: "Travel and logistics" }, { key: "safety", label: "Safety / contingency" }, { key: "notes", label: "Notes" }],
   "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "wrap", label: "Estimated wrap", type: "time" }, { key: "location", label: "Location" }, { key: "address", label: "Address / access instructions" }, { key: "weather", label: "Weather (manual, with source/date)" }, { key: "castCalls", label: "Cast calls / makeup" }, { key: "crewCalls", label: "Crew and department calls" }, { key: "meals", label: "Meals / breaks" }, { key: "moves", label: "Company moves / parking" }, { key: "contacts", label: "Emergency contacts (verified)" }, { key: "hospital", label: "Nearest hospital (verified)" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Important notes / requirements" }],
 };
@@ -40,7 +43,7 @@ const shotChoices: Record<string, string[]> = {
   type: ["Eye level", "Low angle", "High angle", "Over the shoulder", "Point of view", "Aerial", "Dutch angle"],
   movement: ["Static", "Pan", "Tilt", "Dolly", "Tracking", "Handheld", "Crane", "Zoom"],
 };
-const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "In Progress", "Completed"], postStatus: ["Pending", "In Progress", "Completed"] };
+const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "Scheduled", "In Progress", "Completed"], postStatus: ["Pending", "Good", "N/A", "Not Scouted", "In Progress", "Completed"] };
 const legacyScheduleKeys: Record<string, string> = { scenes: "sceneNumbers", props: "propsRequired", equipment: "equipmentRequired", postStatus: "backupStatus" };
 const scheduleValue = (record: ToolRecord, key: string) => record.fields[key] || record.fields[legacyScheduleKeys[key] || ""] || "";
 export type ScheduleProgress = { total: number; completed: number; remaining: number; percentage: number; inProgress: number };
@@ -91,7 +94,8 @@ export function toolWorkspace(project: Project, name: string, href: (path: strin
   const tool: ToolName = name === "calendar" ? "schedule" : name as ToolName;
   const label = name === "calendar" ? "Calendar" : labels[tool];
   const write = tool === "screenplay" || tool === "notes";
-  return `<main class="tool-page" data-tool="${escapeHtml(name)}" data-project="${escapeHtml(project.id)}"><div class="tool-topline"><a href="${href(`/app/projects/${project.id}`)}" data-route>← ${escapeHtml(project.title)}</a><span>Project tools</span>${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}</div>${toolNavigation(project.id, href)}<div class="tool-heading"><div><p class="eyebrow">${escapeHtml(project.title.toUpperCase())}</p><h1>${label}</h1><p>${name === "calendar" ? "Shoot days from your production schedule." : tool === "call-sheets" ? "Create a call sheet from your schedule, then publish a fixed version." : "Changes on this device save automatically."}</p></div>${name === "calendar" ? "" : `<button id="tool-add" class="button" type="button">＋ ${tool === "screenplay" ? "Add element" : tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add schedule entry" : tool === "locations" ? "New location" : "New call sheet"}</button>`}</div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article></main>`;
+  const content = `<div class="studio-toolbar"><h2>${label}</h2><div class="studio-toolbar-actions">${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}${["schedule", "shots", "storyboards"].includes(tool) ? '<button id="studio-print" type="button">Print / PDF</button>' : ""}<button id="studio-export" type="button">Export CSV</button><button id="tool-add" class="button" type="button">＋ ${tool === "screenplay" ? "Add element" : tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add shoot day" : tool === "locations" ? "Add location" : "New call sheet"}</button></div></div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article>`;
+  return studioShell(project.id, project.title, name, label, content, href);
 }
 
 export async function mountToolWorkspace(project: Project, name: string, userId: string, premium = false): Promise<void> {
@@ -106,14 +110,16 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   if (!isCurrent()) return;
   let selected: string | undefined = records[0]?.id;
   let activeScene = "all";
-  let calendarView: "timeline" | "month" | "week" | "day" = "timeline";
+  let boardView = "grid";
+  let visualQuery = "";
+  let inspectorOpen = false;
+  let calendarView: "timeline" | "month" | "week" | "day" = "month";
   const scheduleViewKey = `preframe-schedule-fields:${userId}:${project.id}`;
   let savedScheduleFields: string[] | null = null;
   try { const stored = JSON.parse(localStorage.getItem(scheduleViewKey) || "null"); if (Array.isArray(stored)) savedScheduleFields = stored.filter((key): key is string => typeof key === "string"); } catch { /* Use the full schedule view. */ }
   let scheduleVisible = new Set(savedScheduleFields || fields.schedule.map(field => field.key));
   for (const key of ["day", "date"]) scheduleVisible.add(key);
   let scheduleChooserOpen = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let calendarMonth = new Date();
   const savedRevisions = new Map(records.map(record => [record.id, record.revision || 0]));
   let saveQueue = Promise.resolve();
@@ -131,6 +137,19 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     saveQueue = task.catch(() => {});
     return task;
   };
+  document.querySelector("#studio-print")?.addEventListener("click", () => {
+    const paper = document.querySelector<HTMLElement>("#tool-print-document")!;
+    paper.innerHTML = `<h1>${escapeHtml(project.title)} — ${labels[tool]}</h1>${ordered().map(item => `<section class="studio-print-record"><h2>${escapeHtml(item.title)}</h2>${safeImage(item.fields.image || '') ? `<img src="${escapeHtml(safeImage(item.fields.image))}" alt="Reference image">` : ''}${fields[tool].filter(field => field.key !== 'image').map(field => `<p><b>${escapeHtml(field.label)}:</b> ${escapeHtml(item.fields[field.key] || '—')}</p>`).join('')}</section>`).join('')}`;
+    print();
+  });
+  document.querySelector("#studio-export")?.addEventListener("click", () => {
+    const columns = [{ key: "title", label: "Title" }, ...fields[tool]];
+    for (const key of new Set(records.flatMap(item => Object.keys(item.fields)))) if (!columns.some(column => column.key === key) && !["order", "richBody"].includes(key)) columns.push({ key, label: key });
+    const csv = (value: string) => '"' + (/^[=+@\-]/.test(value) ? "'" : "") + value.replaceAll('"', '""') + '"';
+    const output = [columns.map(c => csv(c.label)).join(","), ...ordered().map(item => columns.map(c => csv(c.key === "title" ? item.title : item.fields[c.key] || "")).join(","))].join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\ufeff", output], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = tool + ".csv"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   const renderList = () => {
     const items = ordered();
     if (name === "calendar") {
@@ -167,6 +186,15 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total shoot days</small><strong>${progress.total}</strong></div><div><small>Completed</small><strong>${progress.completed}</strong></div><div><small>Remaining</small><strong>${progress.remaining}</strong></div><div><small>Completion</small><strong>${progress.percentage}%</strong></div><div class="schedule-progress"><span>${progress.inProgress ? `${progress.inProgress} in progress · ` : ""}Progress</span><div role="progressbar" aria-valuenow="${progress.percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${progress.percentage}%"></i></div><small>Each Day label or date is counted once. A day completes when every entry is marked Completed.</small></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}<th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-row="${escapeHtml(item.id)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field)}</td>`).join("")}<td class="schedule-actions"><button type="button" data-schedule-delete="${escapeHtml(item.id)}" aria-label="Delete ${escapeHtml(item.title)}">×</button></td></tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length + 1}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
     };
     const wireScheduleBoard = () => {
+      const chooser = editor.querySelector(".schedule-field-chooser");
+      chooser?.insertAdjacentHTML("afterend", '<div class="studio-schedule-filters"><input type="search" id="schedule-search" placeholder="Search scenes, locations, cast…" aria-label="Search schedule"><select id="schedule-status-filter" aria-label="Filter schedule by status"><option value="">All statuses</option>' + scheduleChoices.status.map(value => '<option>' + value + '</option>').join('') + '</select><select id="schedule-priority-filter" aria-label="Filter schedule by priority"><option value="">All priorities</option><option>High</option><option>Medium</option><option>Low</option></select></div>');
+      const filterSchedule = () => {
+        const query = editor.querySelector<HTMLInputElement>("#schedule-search")!.value.toLowerCase();
+        const statusFilter = editor.querySelector<HTMLSelectElement>("#schedule-status-filter")!.value;
+        const priority = editor.querySelector<HTMLSelectElement>("#schedule-priority-filter")!.value;
+        editor.querySelectorAll<HTMLElement>("[data-schedule-row]").forEach(row => { const item = records.find(item => item.id === row.dataset.scheduleRow)!; row.hidden = ![item.title, ...Object.values(item.fields)].join(' ').toLowerCase().includes(query) || Boolean(statusFilter && item.fields.status !== statusFilter) || Boolean(priority && item.fields.priority !== priority); });
+      };
+      editor.querySelectorAll('.studio-schedule-filters input,.studio-schedule-filters select').forEach(control => control.addEventListener('input', filterSchedule));
       editor.querySelector<HTMLDetailsElement>(".schedule-field-chooser")?.addEventListener("toggle", event => { scheduleChooserOpen = (event.currentTarget as HTMLDetailsElement).open; });
       editor.querySelectorAll<HTMLInputElement>("[data-schedule-visible]").forEach(input => input.onchange = () => {
         if (input.checked) scheduleVisible.add(input.dataset.scheduleVisible!); else scheduleVisible.delete(input.dataset.scheduleVisible!);
@@ -183,11 +211,13 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         if (!item || !key) return;
         item.fields[key] = control.value;
         item.updatedAt = new Date().toISOString();
-        clearTimeout(timer);
-        timer = setTimeout(() => persist(item).then(() => {
-          const board = editor.querySelector(".schedule-board");
-          if (board) { board.outerHTML = scheduleBoard(); wireScheduleBoard(); }
-        }).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save schedule"; }), 350);
+        void persist(item).then(() => {
+          if (!isCurrent()) return;
+          const summary = editor.querySelector(".schedule-summary");
+          const template = document.createElement("template");
+          template.innerHTML = scheduleBoard();
+          if (summary) summary.replaceWith(template.content.querySelector(".schedule-summary")!);
+        }).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save schedule"; });
       };
       editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-schedule-cell]").forEach(control => {
         control.addEventListener(control instanceof HTMLSelectElement ? "change" : "input", () => saveCell(control));
@@ -195,6 +225,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLButtonElement>("[data-schedule-delete]").forEach(button => button.onclick = async () => {
         const item = records.find(candidate => candidate.id === button.dataset.scheduleDelete);
         if (!item || !confirm(`Delete “${item.title}”? This cannot be undone.`)) return;
+        await saveQueue;
         await deleteToolRecord(userId, project.id, tool, item.id);
         savedRevisions.delete(item.id); records = records.filter(candidate => candidate.id !== item.id);
         status.textContent = "Deleted from this device"; renderEditor();
@@ -203,13 +234,55 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     const visualBoard = () => {
       const visible = ordered().filter(item => activeScene === "all" || item.fields.sceneId === activeScene);
       const sceneLabel = (item: ToolRecord) => screenplayScenes.find(scene => scene.id === item.fields.sceneId)?.fields.text || "Ungrouped";
-      const field = (item: ToolRecord, key: string, label: string, list = "") => `<input data-visual-field="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${label}" value="${escapeHtml(key === "title" ? item.title : item.fields[key] || "")}" ${list ? `list="${list}"` : ""}>`;
+      const field = (item: ToolRecord, key: string, label: string, list = "") => key === "description" ? `<textarea rows="3" data-visual-field="description" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${label}">${escapeHtml(item.fields.description || "")}</textarea>` : `<input data-visual-field="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${label}" value="${escapeHtml(key === "title" ? item.title : item.fields[key] || "")}" ${list ? `list="${list}"` : ""}>`;
       const scene = (item: ToolRecord) => `<select data-visual-field="sceneId" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} Scene"><option value="">Ungrouped</option>${screenplayScenes.map(scene => `<option value="${escapeHtml(scene.id)}" ${item.fields.sceneId === scene.id ? "selected" : ""}>${escapeHtml(scene.fields.text || scene.title)}</option>`).join("")}</select>`;
       if (tool === "shots") return `<div class="shot-board"><datalist id="shot-size-options">${shotChoices.size.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><datalist id="shot-type-options">${shotChoices.type.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><datalist id="shot-movement-options">${shotChoices.movement.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><div class="visual-board-head"><strong>Shot list</strong><span>${visible.length} ${visible.length === 1 ? "shot" : "shots"} · edit directly in the grid</span></div><div class="shot-table-wrap"><table class="shot-table"><thead><tr><th>Image</th><th>Shot</th><th>Scene</th><th>Description</th><th>Shot size</th><th>Shot type</th><th>Movement</th><th>Est. time</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${visible.map((item, index) => `<tr data-visual-row="${escapeHtml(item.id)}"><td><label class="visual-image-cell">${safeImage(item.fields.image || "") ? `<img alt="Shot reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span class="shot-image-placeholder">▧</span>'}<input type="file" accept="image/*" data-visual-image="${escapeHtml(item.id)}" aria-label="Upload image for shot ${index + 1}"></label></td><td><small>${index + 1}</small>${field(item, "title", "Shot title")}</td><td>${scene(item)}</td><td>${field(item, "description", "Description")}</td><td>${field(item, "size", "Shot size", "shot-size-options")}</td><td>${field(item, "type", "Shot type", "shot-type-options")}</td><td>${field(item, "movement", "Movement", "shot-movement-options")}</td><td>${field(item, "estimate", "Estimated time")}</td><td class="visual-delete"><button type="button" data-visual-delete="${escapeHtml(item.id)}" aria-label="Delete shot ${index + 1}">×</button></td></tr>`).join("") || '<tr><td colspan="9" class="visual-board-empty">No shots in this scene. Add one to begin.</td></tr>'}</tbody></table></div></div>`;
       if (tool === "storyboards") return `<div class="storyboard-board"><div class="visual-board-head"><strong>Storyboard</strong><span>${visible.length} ${visible.length === 1 ? "frame" : "frames"} · edit each panel directly</span></div><div class="storyboard-grid">${visible.map((item, index) => `<article class="storyboard-card" data-visual-row="${escapeHtml(item.id)}"><div class="storyboard-card-title">${scene(item)}<small>Frame ${index + 1}</small><button type="button" data-visual-delete="${escapeHtml(item.id)}" aria-label="Delete frame ${index + 1}">×</button></div><label class="storyboard-card-image">${safeImage(item.fields.image || "") ? `<img alt="Frame reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span aria-hidden="true">▧</span>'}<input type="file" accept="image/*" data-visual-image="${escapeHtml(item.id)}" aria-label="Upload image for frame ${index + 1}"></label><label class="storyboard-inline-field"><span>Shot</span>${field(item, "title", "Shot title")}</label><label class="storyboard-inline-field"><span>Description</span><textarea rows="2" data-visual-field="description" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} Description">${escapeHtml(item.fields.description || "")}</textarea></label><label class="storyboard-inline-field"><span>Sound</span>${field(item, "sound", "Sound effects")}</label><label class="storyboard-inline-field"><span>Video reference</span>${field(item, "video", "Video reference")}</label></article>`).join("") || '<p class="visual-board-empty">No frames in this scene. Add one to begin.</p>'}</div></div>`;
       return "";
     };
     const wireVisualBoard = () => {
+      const head = editor.querySelector<HTMLElement>(".visual-board-head");
+      if (head) {
+        head.innerHTML = `<div class="studio-visual-count"><strong>${records.length}</strong><span>${tool === "shots" ? "Total shots" : "Frames"}</span></div><div class="studio-visual-count"><strong>${new Set(records.map(item => item.fields.sceneId).filter(Boolean)).size}</strong><span>Scenes</span></div><label class="studio-scene-filter">Scene<select id="studio-scene-filter"><option value="all">All scenes</option>${screenplayScenes.map(scene => `<option value="${escapeHtml(scene.id)}" ${activeScene === scene.id ? "selected" : ""}>${escapeHtml(scene.fields.text || scene.title)}</option>`).join("")}</select></label><input id="studio-visual-search" type="search" placeholder="Search ${tool === "shots" ? "shots" : "frames"}…" aria-label="Search visual records" value="${escapeHtml(visualQuery)}">${tool === "storyboards" ? `<div class="studio-view-switch"><button type="button" data-board-view="grid" aria-pressed="${boardView === "grid"}">Grid</button><button type="button" data-board-view="list" aria-pressed="${boardView === "list"}">List</button></div>` : ""}`;
+        head.querySelector<HTMLSelectElement>("#studio-scene-filter")!.onchange = event => { activeScene = (event.target as HTMLSelectElement).value; renderEditor(); };
+        const search = head.querySelector<HTMLInputElement>("#studio-visual-search")!;
+        const filter = () => editor.querySelectorAll<HTMLElement>("[data-visual-row]").forEach(row => {
+          const item = records.find(item => item.id === row.dataset.visualRow)!;
+          row.hidden = ![item.title, ...Object.entries(item.fields).filter(([key]) => key !== "image").map(([,value]) => value)].join(" ").toLowerCase().includes(visualQuery.toLowerCase());
+        });
+        search.oninput = () => { visualQuery = search.value; filter(); }; filter();
+        head.querySelectorAll<HTMLButtonElement>("[data-board-view]").forEach(button => button.onclick = () => { boardView = button.dataset.boardView!; renderEditor(); });
+      }
+      editor.querySelector(".storyboard-grid")?.classList.toggle("studio-board-list", boardView === "list");
+      // Real preset menus with an explicit custom value option.
+      for (const key of ["size", "type", "movement"]) editor.querySelectorAll<HTMLInputElement>(`input[data-visual-field="${key}"]`).forEach(input => {
+        const select = document.createElement("select"); select.setAttribute("aria-label", input.getAttribute("aria-label") || key);
+        const options = [...shotChoices[key], ...(input.value && !shotChoices[key].includes(input.value) ? [input.value] : [])];
+        select.innerHTML = '<option value="">Select…</option>' + options.map(value => `<option value="${escapeHtml(value)}" ${input.value === value ? "selected" : ""}>${escapeHtml(value)}</option>`).join("") + '<option value="__custom">Custom…</option>';
+        input.hidden = true; input.before(select);
+        select.onchange = () => { if (select.value === "__custom") { input.hidden = false; input.removeAttribute("list"); input.focus(); } else { input.hidden = true; input.value = select.value; input.dispatchEvent(new Event("input", { bubbles: true })); } };
+      });
+      editor.querySelectorAll<HTMLElement>(".storyboard-card").forEach(card => {
+        const button = document.createElement("button"); button.type = "button"; button.className = "studio-inspect"; button.textContent = "Details";
+        card.querySelector(".storyboard-card-title")?.append(button);
+        button.onclick = () => { selected = card.dataset.visualRow; inspectorOpen = true; renderEditor(); };
+      });
+      if (tool === "storyboards" && inspectorOpen) {
+        const item = records.find(item => item.id === selected);
+        if (item) {
+          const board = editor.querySelector<HTMLElement>(".storyboard-board")!;
+          board.classList.add("studio-board-inspecting");
+          board.insertAdjacentHTML("beforeend", `<aside class="studio-frame-inspector"><div><h3>Frame details</h3><button type="button" id="studio-close-inspector" aria-label="Close frame details">×</button></div>${safeImage(item.fields.image || "") ? `<img src="${escapeHtml(safeImage(item.fields.image))}" alt="Selected frame">` : ''}${["description", "sound", "video", "notes"].map(key => `<label>${key === 'sound' ? 'Sound effects' : key === 'video' ? 'Video reference' : key[0].toUpperCase() + key.slice(1)}<textarea data-visual-field="${key}" data-record-id="${escapeHtml(item.id)}" rows="3">${escapeHtml(item.fields[key] || '')}</textarea></label>`).join('')}<button type="button" data-frame-move="-1">← Move earlier</button><button type="button" data-frame-move="1">Move later →</button></aside>`);
+          editor.querySelector<HTMLButtonElement>("#studio-close-inspector")!.onclick = () => { inspectorOpen = false; renderEditor(); };
+          editor.querySelectorAll<HTMLButtonElement>("[data-frame-move]").forEach(button => button.onclick = async () => {
+            const items = ordered(); const index = items.findIndex(row => row.id === item.id); const next = index + Number(button.dataset.frameMove);
+            if (next < 0 || next >= items.length) return;
+            [items[index], items[next]] = [items[next], items[index]];
+            for (const [position, row] of items.entries()) { row.fields.order = String(position).padStart(6, "0"); await persist(row); }
+            renderEditor();
+          });
+        }
+      }
       editor.querySelectorAll<HTMLTableRowElement>(".shot-table tbody tr[data-visual-row]").forEach(row => row.querySelectorAll("td").forEach((cell, index) => { cell.dataset.label = ["Image", "Shot", "Scene", "Description", "Shot size", "Shot type", "Movement", "Est. time", "Actions"][index]; }));
       const saveVisual = (control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
         const item = records.find(candidate => candidate.id === control.dataset.recordId);
@@ -217,7 +290,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         if (!item || !key) return;
         if (key === "title") item.title = control.value || "Untitled"; else item.fields[key] = control.value;
         item.updatedAt = new Date().toISOString();
-        clearTimeout(timer); timer = setTimeout(() => persist(item).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save item"; }), 350);
+        editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(`[data-visual-field="${key}"][data-record-id="${item.id}"]`).forEach(other => { if (other !== control) other.value = control.value; });
+        void persist(item).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save item"; });
       };
       editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-visual-field]").forEach(control => control.addEventListener(control instanceof HTMLSelectElement ? "change" : "input", () => saveVisual(control)));
       editor.querySelectorAll<HTMLInputElement>("[data-visual-image]").forEach(input => input.onchange = async () => {
@@ -229,7 +303,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLButtonElement>("[data-visual-delete]").forEach(button => button.onclick = async () => {
         const item = records.find(candidate => candidate.id === button.dataset.visualDelete);
         if (!item || !confirm(`Delete “${item.title}”? This cannot be undone.`)) return;
-        await deleteToolRecord(userId, project.id, tool, item.id); savedRevisions.delete(item.id); records = records.filter(candidate => candidate.id !== item.id); renderList(); renderEditor();
+        await saveQueue; await deleteToolRecord(userId, project.id, tool, item.id); savedRevisions.delete(item.id); records = records.filter(candidate => candidate.id !== item.id); renderList(); renderEditor();
       });
     };
     const calendarMarkup = () => {
@@ -253,12 +327,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       }
       const offset = new Date(year, month, 1).getDay();
       const count = new Date(year, month + 1, 0).getDate();
-      const cells = Array.from({ length: offset + count }, (_, index) => {
-        if (index < offset) return '<div class="calendar-cell muted"></div>';
+      const cells = Array.from({ length: Math.ceil((offset + count) / 7) * 7 }, (_, index) => {
+        if (index < offset || index >= offset + count) return '<div class="calendar-cell muted"></div>';
         const day = index - offset + 1;
         const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const entries = ordered().filter(item => item.fields.date === date);
-        return `<div class="calendar-cell"><strong>${day}</strong>${entries.map(item => `<button type="button" data-calendar-select="${item.id}">${escapeHtml(item.title)}</button>`).join("")}</div>`;
+        return `<div class="calendar-cell"><strong>${day}</strong>${entries.map(item => `<button type="button" data-calendar-select="${item.id}">${escapeHtml(item.title)}<small>${escapeHtml(item.fields.time || "Shoot day")}</small><small>${escapeHtml(item.fields.location || "Location not set")}</small></button>`).join("")}</div>`;
       }).join("");
       return `<div class="calendar-board">${boardHead}<div class="calendar-grid">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<span class="calendar-day">${day}</span>`).join("")}${cells}</div></div>`;
     };
@@ -309,6 +383,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     const snapshot = tool === "call-sheets" && record.fields.published === "true";
     const isScript = tool === "screenplay";
     editor.innerHTML = isScript ? screenplayEditorMarkup(project, record, ordered()) : `${name === "calendar" ? calendarMarkup() : ""}<form id="tool-form" class="tool-form"><div class="tool-form-header"><label class="tool-title-label">${isScript ? "Element title" : tool === "schedule" ? "Schedule item" : "Title"}<input name="title" value="${escapeHtml(record.title)}" maxlength="160" ${snapshot ? "readonly" : ""} required></label><div class="tool-form-actions">${tool === "call-sheets" && !snapshot ? '<button type="button" id="tool-publish">Publish version</button>' : ""}${(isScript || tool === "shots" || tool === "storyboards") && !snapshot ? '<button type="button" id="tool-up" aria-label="Move item up">↑</button><button type="button" id="tool-down" aria-label="Move item down">↓</button>' : ""}<button type="button" id="tool-print">Print / PDF</button>${name !== "calendar" ? '<button type="button" id="tool-remove" class="danger-text">Delete</button>' : ""}</div></div>${snapshot ? '<p class="tool-published">Published snapshot · This version is read only.</p>' : ""}<div class="tool-fields">${dataFields.map(field => `<label>${escapeHtml(field.label)}${field.key === "kind" ? `<select name="kind">${screenplayKinds.map(kind => `<option value="${escapeHtml(kind)}" ${record.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)}</option>`).join("")}</select>` : ["text", "body", "description", "notes", "schedule"].includes(field.key) ? `<textarea name="${field.key}" rows="${field.key === "text" || field.key === "body" ? 13 : 4}" ${snapshot ? "readonly" : ""}>${escapeHtml(valueFor(field.key))}</textarea>` : `<input name="${field.key}" type="${field.type || "text"}" value="${escapeHtml(valueFor(field.key))}" ${snapshot ? "readonly" : ""}>`}</label>`).join("")}</div>${isScript ? '<p class="script-shortcuts">Format element: Ctrl+1–9, or Alt+Shift+1–9 if your browser uses Ctrl+number. The menu above works on touch devices.</p>' : ""}${(tool === "shots" || tool === "storyboards") ? `<div class="tool-image-upload"><label>Upload reference image <input id="tool-image-file" type="file" accept="image/*"></label>${safeImage(record.fields.image || "") ? `<img alt="Reference image" src="${escapeHtml(safeImage(record.fields.image))}">` : ""}</div>` : ""}${isScript ? '<section class="tool-comments"><h2>Comments</h2><label>Comment on selected script text<textarea id="tool-comment-body" rows="2" placeholder="Leave a note for your crew"></textarea></label><button type="button" id="tool-comment-add">Add comment</button><div id="tool-comment-list"></div></section>' : ""}</form>`;
+    if (["notes", "locations", "call-sheets"].includes(tool)) editor.innerHTML = studioDocument(tool, record, project.title);
+    editor.querySelector("#studio-duplicate")?.addEventListener("click", async () => {
+      const copy = newToolRecord(record.title + " — revision", { ...record.fields, published: "false", publishedAt: "" });
+      records.push(copy); selected = copy.id; await persist(copy); renderList(); renderEditor();
+    });
     if (tool === "shots" || tool === "storyboards") {
       editor.insertAdjacentHTML("afterbegin", visualBoard());
       const fieldGrid = editor.querySelector<HTMLElement>(".tool-fields")!;
@@ -328,6 +407,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     }
     wireCalendar();
     const form = editor.querySelector<HTMLFormElement>("#tool-form")!;
+    if (tool === "notes") mountNoteEditor(form, record.fields.richBody);
     if (tool === "shots") form.querySelectorAll<HTMLSelectElement>("[data-shot-choice]").forEach(choice => choice.addEventListener("change", () => {
       const key = choice.dataset.shotChoice!;
       const input = form.querySelector<HTMLInputElement>(`input[name="${key}"]`)!;
@@ -349,25 +429,18 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       record.updatedAt = new Date().toISOString();
       renderList();
       if (name === "calendar") { const board = editor.querySelector(".calendar-board"); if (board) { board.outerHTML = calendarMarkup(); wireCalendar(); } }
-      clearTimeout(timer);
-      timer = setTimeout(() => persist(record).then(() => {
-        if (tool === "schedule" && name !== "calendar") { const board = editor.querySelector(".schedule-board"); if (board) { board.outerHTML = scheduleBoard(); wireScheduleBoard(); } }
-        if (tool === "shots" || tool === "storyboards") {
-          const board = editor.querySelector(".shot-board, .storyboard-board");
-          if (board) { board.outerHTML = visualBoard(); wireVisualBoard(); }
-        }
-      }).catch(error => { status.textContent = `Save failed: ${error.message}`; }), 350);
+      void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; });
     });
     editor.querySelector("#tool-remove")?.addEventListener("click", async () => {
       if (!confirm(`Delete “${record.title}”? This cannot be undone.`)) return;
-      clearTimeout(timer); await saveQueue; await deleteToolRecord(userId, project.id, tool, record.id);
+      await saveQueue; await deleteToolRecord(userId, project.id, tool, record.id);
       savedRevisions.delete(record.id); records = records.filter(item => item.id !== record.id); selected = ordered()[0]?.id;
       status.textContent = "Deleted from this device"; renderList(); renderEditor();
     });
     editor.querySelector("#tool-print")?.addEventListener("click", () => {
       const paper = document.querySelector<HTMLElement>("#tool-print-document")!;
       if (tool === "screenplay") paper.innerHTML = `<h1>${escapeHtml(project.title)}</h1>${ordered().map(item => `<p class="script-print-${(item.fields.kind || "Text").toLowerCase().replaceAll(" ", "-")}">${escapeHtml(item.fields.text || "")}</p>`).join("")}`;
-      else paper.innerHTML = `<h1>${escapeHtml(record.title)}</h1>${dataFields.map(field => `<section><h2>${escapeHtml(field.label)}</h2><p>${escapeHtml(record.fields[field.key] || "—")}</p></section>`).join("")}`;
+      else paper.innerHTML = `<h1>${escapeHtml(project.title)}</h1><h2>${escapeHtml(record.title)}</h2>${Array.from(form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]")).filter(input => input.name !== "title" && input.name !== "richBody").map(input => `<section><h2>${escapeHtml(input.closest("label")?.querySelector("span")?.textContent || input.name)}</h2><p>${escapeHtml(input.value || "—")}</p></section>`).join("")}`;
       print();
     });
     for (const [direction, offset] of [["up", -1], ["down", 1]] as const) editor.querySelector(`#tool-${direction}`)?.addEventListener("click", async () => {
@@ -384,7 +457,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
     editor.querySelector("#tool-publish")?.addEventListener("click", async () => {
       if (!confirm("Publish this call sheet as a read-only snapshot?")) return;
-      clearTimeout(timer); record.fields.published = "true"; record.fields.publishedAt = new Date().toISOString();
+      record.fields.published = "true"; record.fields.publishedAt = new Date().toISOString();
       await persist(record); renderEditor();
     });
     if (tool === "screenplay") {
@@ -465,7 +538,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     }
     records.push(record); selected = record.id; await persist(record); renderList(); renderEditor();
     if (tool === "screenplay") editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus();
-    else if (tool === "notes") editor.querySelector<HTMLTextAreaElement>('textarea[name="body"]')?.focus();
+    else if (tool === "notes") editor.querySelector<HTMLElement>('.ProseMirror')?.focus();
     else if (tool === "schedule") editor.querySelector<HTMLInputElement>(`[data-schedule-cell="day"][data-record-id="${record.id}"]`)?.focus();
     else if (tool === "shots" || tool === "storyboards") editor.querySelector<HTMLInputElement>(`[data-visual-field="title"][data-record-id="${record.id}"]`)?.focus();
     else editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();

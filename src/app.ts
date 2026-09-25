@@ -105,6 +105,7 @@ async function render(){
       }
     }
   }catch(e){root.innerHTML=shell(`<main class="empty-workspace"><h1>Could not load Preframe</h1><p>${esc(e instanceof Error?e.message:"Unknown error")}</p>${link("/app","Retry","button")}</main>`,!!session||preview);}
+  if(location.hash === "#project-management"){const management=document.querySelector<HTMLDetailsElement>("#project-management");if(management){management.open=true;management.scrollIntoView();}}
   document.querySelectorAll<HTMLAnchorElement>("[data-route]").forEach(a=>a.addEventListener("click",e=>{if(a.origin===location.origin){e.preventDefault();history.pushState({},"",a.href);errorMessage="";render();}}));
   document.querySelectorAll<HTMLAnchorElement>("[data-home-anchor]").forEach(anchor=>anchor.addEventListener("click",event=>{
     const id=anchor.dataset.homeAnchor;
@@ -199,6 +200,6 @@ async function wire(p:Project){
   });
 }
 addEventListener("popstate",render);
-supabase.auth.onAuthStateChange((event,session)=>{queueMicrotask(()=>{if(event==="SIGNED_IN"&&session){sessionStorage.removeItem("preframe-oauth-pending");history.replaceState({},"",href("/app"));render();}else if(event==="SIGNED_OUT"&&!preview){history.replaceState({},"",href("/"));render();}else if(event==="TOKEN_REFRESHED")render();});});
+supabase.auth.onAuthStateChange((event,session)=>{queueMicrotask(()=>{if(event==="SIGNED_IN"&&session){const pending=sessionStorage.getItem("preframe-oauth-pending");sessionStorage.removeItem("preframe-oauth-pending");if(pending||parseRoute(location.pathname).page==="auth"){history.replaceState({},"",href("/app"));render();}}else if(event==="SIGNED_OUT"&&!preview){history.replaceState({},"",href("/"));render();}});});
 addEventListener("storage",event=>{if(!preview&&event.key?.startsWith("sb-"))render();});
 render();

@@ -16,6 +16,7 @@ const html = (await readFile("index.html", "utf8"))
   .replace("/dist/app.js", "./app.js");
 await writeFile("site/index.html", html);
 await cp("styles.css", "site/styles.css");
+await cp("studio.css", "site/studio.css");
 const prototypeHtml = (await readFile("prototype.html", "utf8"))
   .replace('href="/styles.css"', 'href="./prototype.css"')
   .replace('href="/comment.css"', 'href="./comment.css"')
