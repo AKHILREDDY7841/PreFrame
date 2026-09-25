@@ -1,3 +1,4 @@
+import { collaborationPage, wireCollaboration } from "./collaboration-page.js";
 import { LocalProjectRepository } from "./local-repository.js";
 import { CloudProjectRepository, supabase } from "./cloud.js";
 import { parseRoute } from "./routes.js";
@@ -25,7 +26,7 @@ function logo(target="/"){return `<a class="logo" href="${href(target)}" data-ro
 function shell(content:string,signed=false,badge=accountBadge,bare=false){if(bare)return content;return `<header class="topbar">${logo(signed?"/app":"/")}<nav aria-label="Primary">${signed?`${link("/app","Home")}<span class="avatar">${preview?"Preview":accountBadge||badge}</span>${preview?"":"<button id='sign-out' type='button'>Sign out</button>"}`:`<span class="public-nav-center">${link("/#features","Features")} ${link("/#pricing","Pricing")} ${link("/#about","About")}</span><span class="public-nav-actions">${link("/auth","Log in","plain-link")} ${link("/auth","Get started →","button")}</span>`}</nav></header>${content}`;}
 function landing(){return shell(`<main class="landing"><section class="landing-stage" aria-labelledby="landing-title"><div class="landing-art" aria-hidden="true"></div><div class="landing-center-rule" aria-hidden="true"></div><div class="landing-copy"><p class="eyebrow">IDEAS <span>→</span> PLANS <span>→</span> REALITY</p><h1 id="landing-title">Before the<br><em>camera</em> rolls.</h1><p class="lede">Preframe is the all-in-one workspace for filmmakers<br class="desktop-break"> to write, visualize, plan and bring their stories to life.</p><div class="actions">${link("/auth","Start for free <span aria-hidden='true'>→</span>","button")}<button class="watch-video" type="button" disabled title="Video coming soon"><span class="play-ring" aria-hidden="true">▶</span>Watch video</button></div></div><div class="landing-frame-index" aria-hidden="true"><span></span>01 / 03</div><p class="landing-quote">“Ideas are easy.<br>Pre-production makes them real.”</p><div class="landing-feature-strip" aria-label="Preframe tools"><div class="landing-feature"><span class="feature-icon" aria-hidden="true">▤</span><span><strong>WRITE</strong><small>Screenplays &amp; Notes</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">◎</span><span><strong>VISUALIZE</strong><small>Shot lists &amp; Storyboards</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">▦</span><span><strong>PLAN</strong><small>Schedules &amp; Call sheets</small></span></div><div class="landing-feature"><span class="feature-icon" aria-hidden="true">♧</span><span><strong>COLLABORATE</strong><small>Work with your crew</small></span></div><span class="feature-aside" aria-hidden="true">SAME<br>STORY<br>HIGHER<br>POSSIBILITIES</span></div><div class="landing-bottom-mark" aria-hidden="true"><span>P R E F R A M E</span><span>BUILT FOR FILMMAKERS</span><a href="#features" aria-label="Scroll to features">SCROLL <span>✦</span></a></div></section>${landingDetails(href("/auth"))}</main>`);}
 function auth(){return shell(`<main class="auth-page"><section><p class="eyebrow">PREFRAME ACCOUNT</p><h1>Continue with Google</h1><p>Sign in to create and recover your projects.</p><button id="google-login" type="button">Continue with Google</button><p role="alert">${esc(errorMessage)}</p><p class="quiet">You can also inspect sample data stored only in this browser.</p><a class="plain-link" href="${href("/app")}?preview=1">Open local preview</a></section></main>`);}
-async function home(){
+async function home(view: "home" | "projects" | "shared" | "settings" = "home"){
   const identity=await repo.getIdentity();
   const storedProjects=await repo.listProjects();
   const projects=preview?storedProjects:await Promise.all(storedProjects.map(project=>cloudRepo.withCoverUrl(project)));
@@ -44,7 +45,7 @@ async function home(){
   })));
   const recentActivity=[...projects.map(project=>({title:project.title,detail:"Project updated",href:href(`/app/projects/${project.id}`),occurredAt:project.updatedAt})),...activity.flat()]
     .sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,5);
-  return renderHomePage({logo:logo("/app"),href,projects,name,badge,premium,preview,error:errorMessage,upcoming,recentActivity});
+  return renderHomePage({logo:logo("/app"),href,view,projects: view === "projects" ? projects.filter(p=>p.ownerId===identity?.profile.id) : view === "shared" ? projects.filter(p=>p.ownerId!==identity?.profile.id) : projects,name,badge,premium,preview,error:errorMessage,upcoming,recentActivity});
 }
 function dashboard(p:Project){
   const icons:Record<string,string>={screenplay:"✎",notes:"▤",shots:"◎",storyboards:"▦",schedule:"▥",calendar:"▦","call-sheets":"▣",locations:"⌖"};
@@ -83,7 +84,7 @@ async function render(){
     r=parseRoute("/app");
   }
   document.body.classList.toggle("is-landing",r.page==="landing");
-  document.body.classList.toggle("is-home",r.page==="home"&&Boolean(session||preview));
+  document.body.classList.toggle("is-home",["home","projects","shared","settings","collaborate"].includes(r.page)&&Boolean(session||preview));
   if(session&&!preview&&r.page!=="landing"&&r.page!=="auth"){
     try{const identity=await cloudRepo.getIdentity();accountBadge=identity?.isAdmin?"Admin":identity?.profile.tier==="premium"?"Premium":"Free";}
     catch{accountBadge="Free";}
@@ -92,7 +93,8 @@ async function render(){
     if(r.page==="landing")root.innerHTML=landing();
     else if(r.page==="auth")root.innerHTML=auth();
     else if(!session&&!preview){history.replaceState({},"",href("/auth"));root.innerHTML=auth();}
-    else if(r.page==="home")root.innerHTML=await home();
+    else if(r.page==="home"||r.page==="projects"||r.page==="shared"||r.page==="settings")root.innerHTML=await home(r.page);
+    else if(r.page==="collaborate"){const identity=await repo.getIdentity();root.innerHTML=collaborationPage((await repo.listProjects()).filter(p=>p.ownerId===identity?.profile.id),href,preview);wireCollaboration(href,url=>{history.pushState({},"",url);render();});}
     else if(r.page==="not-found")root.innerHTML=missing();
     else {
       const p=r.projectId&&await repo.getProject(r.projectId);
