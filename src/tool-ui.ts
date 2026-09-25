@@ -8,7 +8,7 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   notes: [{ key: "body", label: "Note" }],
   shots: [{ key: "scene", label: "Scene" }, { key: "description", label: "Description" }, { key: "size", label: "Shot size" }, { key: "type", label: "Shot type" }, { key: "movement", label: "Movement" }, { key: "estimate", label: "Est. time" }, { key: "image", label: "Image URL", type: "url" }],
   storyboards: [{ key: "shot", label: "Shot" }, { key: "description", label: "Description" }, { key: "sound", label: "Sound effects" }, { key: "video", label: "Video reference URL", type: "url" }, { key: "image", label: "Image URL", type: "url" }],
-  schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "sceneNumbers", label: "Scene Number(s)" }, { key: "scriptPages", label: "Script Pages" }, { key: "location", label: "Location" }, { key: "time", label: "Time" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "propsRequired", label: "Props Required" }, { key: "costumes", label: "Costumes" }, { key: "equipmentRequired", label: "Equipment Required" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "backupStatus", label: "Backup Status" }, { key: "notes", label: "Notes" }],
+  schedule: [{ key: "day", label: "Day" }, { key: "date", label: "Date", type: "date" }, { key: "location", label: "Location" }, { key: "scenes", label: "Scene(s)" }, { key: "characters", label: "Characters" }, { key: "actorsRequired", label: "Actors Required" }, { key: "props", label: "Props" }, { key: "costumes", label: "Costumes" }, { key: "equipment", label: "Equipment" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" }, { key: "postStatus", label: "Post Status" }, { key: "notes", label: "Notes" }],
   locations: [{ key: "address", label: "Address" }, { key: "contact", label: "Contact" }, { key: "phone", label: "Phone" }, { key: "permit", label: "Permission / permit details" }, { key: "availability", label: "Available dates and times" }, { key: "interiorExterior", label: "Interior / exterior" }, { key: "access", label: "Access / parking" }, { key: "travel", label: "Travel and logistics" }, { key: "safety", label: "Safety / contingency" }, { key: "notes", label: "Notes" }],
   "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "wrap", label: "Estimated wrap", type: "time" }, { key: "location", label: "Location" }, { key: "address", label: "Address / access instructions" }, { key: "weather", label: "Weather (manual, with source/date)" }, { key: "castCalls", label: "Cast calls / makeup" }, { key: "crewCalls", label: "Crew and department calls" }, { key: "meals", label: "Meals / breaks" }, { key: "moves", label: "Company moves / parking" }, { key: "contacts", label: "Emergency contacts (verified)" }, { key: "hospital", label: "Nearest hospital (verified)" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Important notes / requirements" }],
 };
@@ -40,7 +40,9 @@ const shotChoices: Record<string, string[]> = {
   type: ["Eye level", "Low angle", "High angle", "Over the shoulder", "Point of view", "Aerial", "Dutch angle"],
   movement: ["Static", "Pan", "Tilt", "Dolly", "Tracking", "Handheld", "Crane", "Zoom"],
 };
-const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "In Progress", "Completed"], backupStatus: ["Pending", "In Progress", "Verified"] };
+const scheduleChoices: Record<string, string[]> = { priority: ["High", "Medium", "Low"], status: ["Not Started", "In Progress", "Completed"], postStatus: ["Pending", "In Progress", "Completed"] };
+const legacyScheduleKeys: Record<string, string> = { scenes: "sceneNumbers", props: "propsRequired", equipment: "equipmentRequired", postStatus: "backupStatus" };
+const scheduleValue = (record: ToolRecord, key: string) => record.fields[key] || record.fields[legacyScheduleKeys[key] || ""] || "";
 export type ScheduleProgress = { total: number; completed: number; remaining: number; percentage: number; inProgress: number };
 /** A shoot day is a shared Day label first, then a shared date. A day is complete only when every entry on it is complete. */
 export function scheduleProgress(records: ToolRecord[]): ScheduleProgress {
@@ -155,9 +157,14 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const progress = scheduleProgress(items);
       const visibleFields = fields.schedule.filter(field => scheduleVisible.has(field.key));
       const columns = visibleFields.map(field => field.label);
-      const choice = (item: ToolRecord, key: string) => `<select data-schedule-choice="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(key)}">${scheduleChoices[key].map(value => `<option value="${value}" ${(item.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
-      const cell = (item: ToolRecord, key: string) => scheduleChoices[key] ? choice(item, key) : escapeHtml(item.fields[key] || "—");
-      return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total shoot days</small><strong>${progress.total}</strong></div><div><small>Completed</small><strong>${progress.completed}</strong></div><div><small>Remaining</small><strong>${progress.remaining}</strong></div><div><small>Completion</small><strong>${progress.percentage}%</strong></div><div class="schedule-progress"><span>${progress.inProgress ? `${progress.inProgress} in progress · ` : ""}Progress</span><div role="progressbar" aria-valuenow="${progress.percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${progress.percentage}%"></i></div><small>Each Day label or date is counted once. A day completes when every entry is marked Completed.</small></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-select="${escapeHtml(item.id)}" class="${selected === item.id ? "selected" : ""}" tabindex="0" aria-label="Edit ${escapeHtml(item.title)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field.key)}</td>`).join("")}</tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
+      const choice = (item: ToolRecord, key: string) => `<select data-schedule-cell="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(key)}">${scheduleChoices[key].map(value => `<option value="${value}" ${(scheduleValue(item, key) || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
+      const cell = (item: ToolRecord, field: { key: string; label: string; type?: string }) => {
+        if (scheduleChoices[field.key]) return choice(item, field.key);
+        const value = scheduleValue(item, field.key);
+        const multiline = ["characters", "actorsRequired", "props", "costumes", "equipment", "notes"].includes(field.key);
+        return multiline ? `<textarea rows="2" data-schedule-cell="${field.key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(field.label)}">${escapeHtml(value)}</textarea>` : `<input type="${field.type || "text"}" value="${escapeHtml(value)}" data-schedule-cell="${field.key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${escapeHtml(field.label)}">`;
+      };
+      return `<div class="schedule-board"><details class="schedule-field-chooser" ${scheduleChooserOpen ? "open" : ""}><summary>Choose schedule fields <span>${columns.length} of ${fields.schedule.length} shown</span></summary><p>Show the details you need. Hidden values remain saved. Day and Date are always visible.</p><div class="schedule-field-options">${fields.schedule.map(field => `<label><input type="checkbox" data-schedule-visible="${field.key}" ${scheduleVisible.has(field.key) ? "checked" : ""} ${field.key === "day" || field.key === "date" ? "disabled" : ""}>${escapeHtml(field.label)}</label>`).join("")}</div><button type="button" data-schedule-show-all>Show all fields</button></details><div class="schedule-summary"><div><small>Total shoot days</small><strong>${progress.total}</strong></div><div><small>Completed</small><strong>${progress.completed}</strong></div><div><small>Remaining</small><strong>${progress.remaining}</strong></div><div><small>Completion</small><strong>${progress.percentage}%</strong></div><div class="schedule-progress"><span>${progress.inProgress ? `${progress.inProgress} in progress · ` : ""}Progress</span><div role="progressbar" aria-valuenow="${progress.percentage}" aria-valuemin="0" aria-valuemax="100" aria-label="Completed shoot days"><i style="width:${progress.percentage}%"></i></div><small>Each Day label or date is counted once. A day completes when every entry is marked Completed.</small></div></div><div class="schedule-table-wrap"><table class="schedule-table"><thead><tr>${columns.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join("")}<th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${items.length ? items.map(item => `<tr data-schedule-row="${escapeHtml(item.id)}">${visibleFields.map(field => `<td data-label="${escapeHtml(field.label)}">${cell(item, field)}</td>`).join("")}<td class="schedule-actions"><button type="button" data-schedule-delete="${escapeHtml(item.id)}" aria-label="Delete ${escapeHtml(item.title)}">×</button></td></tr>`).join("") : `<tr><td class="schedule-empty-row" colspan="${columns.length + 1}">No shoot days yet. Add a schedule entry to begin planning.</td></tr>`}</tbody></table></div></div>`;
     };
     const wireScheduleBoard = () => {
       editor.querySelector<HTMLDetailsElement>(".schedule-field-chooser")?.addEventListener("toggle", event => { scheduleChooserOpen = (event.currentTarget as HTMLDetailsElement).open; });
@@ -170,34 +177,59 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         scheduleVisible = new Set(fields.schedule.map(field => field.key));
         localStorage.removeItem(scheduleViewKey); scheduleChooserOpen = true; renderEditor();
       });
-      const chooseDay = (id: string | undefined) => {
-        selected = id; renderList(); renderEditor();
-        editor.querySelector("#tool-form")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+      const saveCell = (control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
+        const item = records.find(candidate => candidate.id === control.dataset.recordId);
+        const key = control.dataset.scheduleCell;
+        if (!item || !key) return;
+        item.fields[key] = control.value;
+        item.updatedAt = new Date().toISOString();
+        clearTimeout(timer);
+        timer = setTimeout(() => persist(item).then(() => {
+          const board = editor.querySelector(".schedule-board");
+          if (board) { board.outerHTML = scheduleBoard(); wireScheduleBoard(); }
+        }).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save schedule"; }), 350);
       };
-      editor.querySelectorAll<HTMLTableRowElement>("[data-schedule-select]").forEach(row => {
-        row.onclick = event => { if ((event.target as HTMLElement).closest("select")) return; chooseDay(row.dataset.scheduleSelect); };
-        row.onkeydown = event => { if (event.key === "Enter" && !(event.target as HTMLElement).closest("select")) chooseDay(row.dataset.scheduleSelect); };
+      editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-schedule-cell]").forEach(control => {
+        control.addEventListener(control instanceof HTMLSelectElement ? "change" : "input", () => saveCell(control));
       });
-      editor.querySelectorAll<HTMLSelectElement>("[data-schedule-choice]").forEach(select => select.onchange = async () => {
-        const item = records.find(candidate => candidate.id === select.dataset.recordId);
-        if (!item) return;
-        item.fields[select.dataset.scheduleChoice!] = select.value;
-        try { await persist(item); renderEditor(); }
-        catch (error) { status.textContent = error instanceof Error ? error.message : "Could not save schedule"; }
+      editor.querySelectorAll<HTMLButtonElement>("[data-schedule-delete]").forEach(button => button.onclick = async () => {
+        const item = records.find(candidate => candidate.id === button.dataset.scheduleDelete);
+        if (!item || !confirm(`Delete “${item.title}”? This cannot be undone.`)) return;
+        await deleteToolRecord(userId, project.id, tool, item.id);
+        savedRevisions.delete(item.id); records = records.filter(candidate => candidate.id !== item.id);
+        status.textContent = "Deleted from this device"; renderEditor();
       });
     };
     const visualBoard = () => {
       const visible = ordered().filter(item => activeScene === "all" || item.fields.sceneId === activeScene);
       const sceneLabel = (item: ToolRecord) => screenplayScenes.find(scene => scene.id === item.fields.sceneId)?.fields.text || "Ungrouped";
-      if (tool === "shots") return `<div class="shot-board"><div class="visual-board-head"><strong>Shot list</strong><span>${visible.length} ${visible.length === 1 ? "shot" : "shots"}</span></div><div class="shot-table-wrap"><table class="shot-table"><thead><tr><th>Image</th><th>Shot</th><th>Description</th><th>Shot size</th><th>Shot type</th><th>Movement</th><th>Est. time</th></tr></thead><tbody>${visible.map((item, index) => `<tr class="${item.id === selected ? "selected" : ""}" data-visual-select="${escapeHtml(item.id)}" tabindex="0" aria-label="Edit shot ${index + 1}"><td>${safeImage(item.fields.image || "") ? `<img alt="Shot reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span class="shot-image-placeholder">▧</span>'}</td><td><strong>${index + 1}</strong><small>${escapeHtml(sceneLabel(item))}</small></td><td>${escapeHtml(item.fields.description || item.title)}</td><td>${escapeHtml(item.fields.size || "—")}</td><td>${escapeHtml(item.fields.type || "—")}</td><td>${escapeHtml(item.fields.movement || "—")}</td><td>${escapeHtml(item.fields.estimate || "—")}</td></tr>`).join("") || '<tr><td colspan="7" class="visual-board-empty">No shots in this scene. Add one to begin.</td></tr>'}</tbody></table></div></div>`;
-      if (tool === "storyboards") return `<div class="storyboard-board"><div class="visual-board-head"><strong>Storyboard</strong><span>${visible.length} ${visible.length === 1 ? "frame" : "frames"}</span></div><div class="storyboard-grid">${visible.map((item, index) => `<button type="button" class="storyboard-card ${item.id === selected ? "selected" : ""}" data-visual-select="${escapeHtml(item.id)}"><span class="storyboard-card-title">${escapeHtml(sceneLabel(item))} · Frame ${index + 1}</span><span class="storyboard-card-image">${safeImage(item.fields.image || "") ? `<img alt="Frame reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span aria-hidden="true">▧</span>'}</span><span class="storyboard-card-line">${escapeHtml(item.fields.description || "Description…")}</span><span class="storyboard-card-line">♫ ${escapeHtml(item.fields.sound || "Sound effects…")}</span><span class="storyboard-card-line">▣ ${escapeHtml(item.fields.video || "Video reference…")}</span></button>`).join("") || '<p class="visual-board-empty">No frames in this scene. Add one to begin.</p>'}</div></div>`;
+      const field = (item: ToolRecord, key: string, label: string, list = "") => `<input data-visual-field="${key}" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} ${label}" value="${escapeHtml(key === "title" ? item.title : item.fields[key] || "")}" ${list ? `list="${list}"` : ""}>`;
+      const scene = (item: ToolRecord) => `<select data-visual-field="sceneId" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} Scene"><option value="">Ungrouped</option>${screenplayScenes.map(scene => `<option value="${escapeHtml(scene.id)}" ${item.fields.sceneId === scene.id ? "selected" : ""}>${escapeHtml(scene.fields.text || scene.title)}</option>`).join("")}</select>`;
+      if (tool === "shots") return `<div class="shot-board"><datalist id="shot-size-options">${shotChoices.size.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><datalist id="shot-type-options">${shotChoices.type.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><datalist id="shot-movement-options">${shotChoices.movement.map(value => `<option value="${escapeHtml(value)}">`).join("")}</datalist><div class="visual-board-head"><strong>Shot list</strong><span>${visible.length} ${visible.length === 1 ? "shot" : "shots"} · edit directly in the grid</span></div><div class="shot-table-wrap"><table class="shot-table"><thead><tr><th>Image</th><th>Shot</th><th>Scene</th><th>Description</th><th>Shot size</th><th>Shot type</th><th>Movement</th><th>Est. time</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${visible.map((item, index) => `<tr data-visual-row="${escapeHtml(item.id)}"><td><label class="visual-image-cell">${safeImage(item.fields.image || "") ? `<img alt="Shot reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span class="shot-image-placeholder">▧</span>'}<input type="file" accept="image/*" data-visual-image="${escapeHtml(item.id)}" aria-label="Upload image for shot ${index + 1}"></label></td><td><small>${index + 1}</small>${field(item, "title", "Shot title")}</td><td>${scene(item)}</td><td>${field(item, "description", "Description")}</td><td>${field(item, "size", "Shot size", "shot-size-options")}</td><td>${field(item, "type", "Shot type", "shot-type-options")}</td><td>${field(item, "movement", "Movement", "shot-movement-options")}</td><td>${field(item, "estimate", "Estimated time")}</td><td class="visual-delete"><button type="button" data-visual-delete="${escapeHtml(item.id)}" aria-label="Delete shot ${index + 1}">×</button></td></tr>`).join("") || '<tr><td colspan="9" class="visual-board-empty">No shots in this scene. Add one to begin.</td></tr>'}</tbody></table></div></div>`;
+      if (tool === "storyboards") return `<div class="storyboard-board"><div class="visual-board-head"><strong>Storyboard</strong><span>${visible.length} ${visible.length === 1 ? "frame" : "frames"} · edit each panel directly</span></div><div class="storyboard-grid">${visible.map((item, index) => `<article class="storyboard-card" data-visual-row="${escapeHtml(item.id)}"><div class="storyboard-card-title">${scene(item)}<small>Frame ${index + 1}</small><button type="button" data-visual-delete="${escapeHtml(item.id)}" aria-label="Delete frame ${index + 1}">×</button></div><label class="storyboard-card-image">${safeImage(item.fields.image || "") ? `<img alt="Frame reference" src="${escapeHtml(safeImage(item.fields.image))}">` : '<span aria-hidden="true">▧</span>'}<input type="file" accept="image/*" data-visual-image="${escapeHtml(item.id)}" aria-label="Upload image for frame ${index + 1}"></label><label class="storyboard-inline-field"><span>Shot</span>${field(item, "title", "Shot title")}</label><label class="storyboard-inline-field"><span>Description</span><textarea rows="2" data-visual-field="description" data-record-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.title)} Description">${escapeHtml(item.fields.description || "")}</textarea></label><label class="storyboard-inline-field"><span>Sound</span>${field(item, "sound", "Sound effects")}</label><label class="storyboard-inline-field"><span>Video reference</span>${field(item, "video", "Video reference")}</label></article>`).join("") || '<p class="visual-board-empty">No frames in this scene. Add one to begin.</p>'}</div></div>`;
       return "";
     };
     const wireVisualBoard = () => {
-      editor.querySelectorAll<HTMLTableRowElement>(".shot-table tbody tr[data-visual-select]").forEach(row => row.querySelectorAll("td").forEach((cell, index) => { cell.dataset.label = ["Image", "Shot", "Description", "Shot size", "Shot type", "Movement", "Est. time"][index]; }));
-      editor.querySelectorAll<HTMLElement>("[data-visual-select]").forEach(item => {
-      item.onclick = () => { selected = item.dataset.visualSelect; renderEditor(); };
-      item.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selected = item.dataset.visualSelect; renderEditor(); } };
+      editor.querySelectorAll<HTMLTableRowElement>(".shot-table tbody tr[data-visual-row]").forEach(row => row.querySelectorAll("td").forEach((cell, index) => { cell.dataset.label = ["Image", "Shot", "Scene", "Description", "Shot size", "Shot type", "Movement", "Est. time", "Actions"][index]; }));
+      const saveVisual = (control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
+        const item = records.find(candidate => candidate.id === control.dataset.recordId);
+        const key = control.dataset.visualField;
+        if (!item || !key) return;
+        if (key === "title") item.title = control.value || "Untitled"; else item.fields[key] = control.value;
+        item.updatedAt = new Date().toISOString();
+        clearTimeout(timer); timer = setTimeout(() => persist(item).catch(error => { status.textContent = error instanceof Error ? error.message : "Could not save item"; }), 350);
+      };
+      editor.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-visual-field]").forEach(control => control.addEventListener(control instanceof HTMLSelectElement ? "change" : "input", () => saveVisual(control)));
+      editor.querySelectorAll<HTMLInputElement>("[data-visual-image]").forEach(input => input.onchange = async () => {
+        const item = records.find(candidate => candidate.id === input.dataset.visualImage); const file = input.files?.[0];
+        if (!item || !file) return;
+        try { item.fields.image = await compressImage(file); await persist(item); renderEditor(); }
+        catch (error) { status.textContent = error instanceof Error ? error.message : "Could not save image"; }
+      });
+      editor.querySelectorAll<HTMLButtonElement>("[data-visual-delete]").forEach(button => button.onclick = async () => {
+        const item = records.find(candidate => candidate.id === button.dataset.visualDelete);
+        if (!item || !confirm(`Delete “${item.title}”? This cannot be undone.`)) return;
+        await deleteToolRecord(userId, project.id, tool, item.id); savedRevisions.delete(item.id); records = records.filter(candidate => candidate.id !== item.id); renderList(); renderEditor();
       });
     };
     const calendarMarkup = () => {
@@ -237,14 +269,35 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLButtonElement>("[data-calendar-select]").forEach(button => button.onclick = () => { selected = button.dataset.calendarSelect; renderList(); renderEditor(); });
     };
     if (!record) {
-      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}${tool === "schedule" && name !== "calendar" ? scheduleBoard() : ""}${tool === "shots" || tool === "storyboards" ? visualBoard() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
+      if (tool === "schedule" && name !== "calendar") {
+        editor.innerHTML = scheduleBoard();
+        wireScheduleBoard();
+        return;
+      }
+      if (tool === "shots" || tool === "storyboards") {
+        editor.innerHTML = visualBoard();
+        wireVisualBoard();
+        return;
+      }
+      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
       editor.querySelector("#script-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
       wireScheduleBoard();
       wireCalendar(); return;
     }
-    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "time", "sceneNumbers", "location", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene") && !(tool === "storyboards" && field.key === "shot") && !(tool === "schedule" && name !== "calendar" && !scheduleVisible.has(field.key)));
+    if (tool === "schedule" && name !== "calendar") {
+      editor.innerHTML = scheduleBoard();
+      wireScheduleBoard();
+      return;
+    }
+    const hasVisualBoard = ["shots", "storyboards"].includes(tool);
+    if (hasVisualBoard) {
+      editor.innerHTML = visualBoard();
+      wireVisualBoard();
+      return;
+    }
+    const dataFields = fields[tool].filter(field => (name !== "calendar" || ["date", "location", "scenes", "status"].includes(field.key)) && !(tool === "shots" && field.key === "scene") && !(tool === "storyboards" && field.key === "shot") && !(tool === "schedule" && name !== "calendar" && !scheduleVisible.has(field.key)));
     const valueFor = (key: string) => record.fields[key] || (tool === "schedule" ? ({
       time: [record.fields.start, record.fields.end].filter(Boolean).join("–"),
       sceneNumbers: record.fields.scene,
@@ -272,14 +325,6 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         if (input) input.closest("label")!.outerHTML = shotChoice(key, record.fields[key] || "");
       }
       wireVisualBoard();
-    }
-    if (tool === "schedule" && name !== "calendar") {
-      editor.insertAdjacentHTML("afterbegin", scheduleBoard());
-      for (const key of ["priority", "status", "backupStatus"]) {
-        const input = editor.querySelector<HTMLInputElement>(`.tool-fields input[name="${key}"]`);
-        if (input) input.outerHTML = `<select name="${key}">${scheduleChoices[key].map(value => `<option value="${value}" ${(record.fields[key] || (key === "status" ? "Not Started" : key === "priority" ? "Medium" : "Pending")) === value ? "selected" : ""}>${value}</option>`).join("")}</select>`;
-      }
-      wireScheduleBoard();
     }
     wireCalendar();
     const form = editor.querySelector<HTMLFormElement>("#tool-form")!;
@@ -406,7 +451,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
     const prior = records.find(item => item.id === selected);
     const nextKind = records.length === 0 ? "Scene Heading" : prior?.fields.kind === "Character" ? "Dialogue" : "Action";
-    const defaults: Record<string, string> = tool === "screenplay" ? { kind: nextKind, text: "" } : tool === "schedule" ? { date: localDateISO(new Date()), priority: "Medium", status: "Not Started", backupStatus: "Pending" } : tool === "shots" || tool === "storyboards" ? { sceneId: activeScene === "all" ? "" : activeScene } : {};
+    const nextDay = String(Math.max(0, ...records.map(item => Number(item.fields.day) || 0)) + 1);
+    const defaults: Record<string, string> = tool === "screenplay" ? { kind: nextKind, text: "" } : tool === "schedule" ? { day: nextDay, date: localDateISO(new Date()), priority: "Medium", status: "Not Started", postStatus: "Pending" } : tool === "shots" || tool === "storyboards" ? { sceneId: activeScene === "all" ? "" : activeScene } : {};
     const documentName = tool === "notes" ? prompt("Name your new document") : null;
     if (tool === "notes" && documentName === null) return;
     if (tool === "notes" && !documentName?.trim()) { status.textContent = "Enter a document name to begin."; return; }
@@ -420,6 +466,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     records.push(record); selected = record.id; await persist(record); renderList(); renderEditor();
     if (tool === "screenplay") editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus();
     else if (tool === "notes") editor.querySelector<HTMLTextAreaElement>('textarea[name="body"]')?.focus();
+    else if (tool === "schedule") editor.querySelector<HTMLInputElement>(`[data-schedule-cell="day"][data-record-id="${record.id}"]`)?.focus();
+    else if (tool === "shots" || tool === "storyboards") editor.querySelector<HTMLInputElement>(`[data-visual-field="title"][data-record-id="${record.id}"]`)?.focus();
     else editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
   });
 }
