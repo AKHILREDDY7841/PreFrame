@@ -32,9 +32,11 @@ async function home(view: "home" | "projects" | "shared" | "settings" | "recycle
   const storedProjects=await repo.listProjects();
   const projects=preview?storedProjects:await Promise.all(storedProjects.map(project=>cloudRepo.withCoverUrl(project)));
   const name=identity?.profile.displayName||"there";
-  const visualPreview=preview&&new URLSearchParams(location.search).get("home")==="premium";
-  const premium=visualPreview||Boolean(identity?.isAdmin||identity?.profile.tier==="premium");
-  const badge=visualPreview?"Premium preview":preview?"Preview":identity?.isAdmin?"Admin":premium?"Premium":"Free";
+  const visualMode=new URLSearchParams(location.search).get("home");
+  const visualPreview=preview&&visualMode==="premium";
+  const visualAdmin=preview&&visualMode==="admin";
+  const premium=visualPreview||visualAdmin||Boolean(identity?.isAdmin||identity?.profile.tier==="premium");
+  const badge=visualAdmin?"Admin":visualPreview?"Premium preview":preview?"Preview":identity?.isAdmin?"Admin":premium?"Premium":"Free";
   accountBadge=badge;
   const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   const upcoming=projects[0]?(await toolRecords(preview?"local-demo-owner":currentUserId,projects[0].id,"schedule"))

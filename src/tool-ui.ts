@@ -437,7 +437,9 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const open = !workspace.classList.contains("scene-navigator-open");
         setSceneNavigator(open);
       };
-      if (localStorage.getItem(sceneNavigatorKey) !== "false") setSceneNavigator(true);
+      // The navigator is part of the writing surface, so each screenplay visit
+      // starts with it visible. The button still closes it for the current view.
+      setSceneNavigator(true);
       form.insertAdjacentHTML("beforeend", `<div class="script-new-element" id="script-new-element" hidden role="dialog" aria-label="Choose a new screenplay element"><p>Start the next element as</p><select id="script-new-kind">${screenplayKinds.map(kind => `<option value="${escapeHtml(kind)}">${escapeHtml(kind)}</option>`).join("")}</select><div><button type="button" id="script-new-confirm">Continue</button><button type="button" id="script-new-cancel">Cancel</button></div></div>`);
     }
     if (tool === "notes") mountNoteEditor(form, record.fields.richBody);
