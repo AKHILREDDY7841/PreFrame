@@ -108,10 +108,16 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   const workspace = document.querySelector<HTMLElement>(".studio-workspace")!;
   const sidebarToggle = document.querySelector<HTMLButtonElement>("#studio-sidebar-toggle");
   const sidebarKey = "preframe-studio-sidebar";
+  const sceneNavigatorKey = `preframe-scene-navigator:${userId}:${project.id}`;
   const setSidebar = (open: boolean) => {
     workspace.classList.toggle("studio-sidebar-open", open);
     sidebarToggle?.setAttribute("aria-expanded", String(open));
     localStorage.setItem(sidebarKey, String(open));
+  };
+  const setSceneNavigator = (open: boolean) => {
+    workspace.classList.toggle("scene-navigator-open", open);
+    document.querySelector<HTMLButtonElement>("#script-navigator-toggle")?.setAttribute("aria-expanded", String(open));
+    localStorage.setItem(sceneNavigatorKey, String(open));
   };
   setSidebar(localStorage.getItem(sidebarKey) === "true");
   sidebarToggle?.addEventListener("click", () => setSidebar(!workspace.classList.contains("studio-sidebar-open")));
@@ -182,7 +188,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const elementIndex = items.length ? items.map((record, index) => `<button type="button" class="tool-list-item ${record.id === selected ? "selected" : ""}" data-select="${escapeHtml(record.id)}"><small>${index + 1 < 10 ? `0${index + 1}` : index + 1}${tool === "screenplay" ? ` · ${escapeHtml(record.fields.kind || "Action")}` : ""}</small><strong>${escapeHtml(record.title || "Untitled")}</strong></button>`).join("") : '<p class="tool-empty">Nothing here yet. Create the first item.</p>';
       list.innerHTML = tool === "screenplay" ? `${sceneNav}<details class="script-element-index"><summary>All elements <span>${items.length}</span></summary>${elementIndex}</details>` : `<h2>Items <span>${items.length}</span></h2>${elementIndex}`;
     }
-    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; revealSelected = tool === "screenplay"; if (tool === "screenplay") workspace.classList.remove("scene-navigator-open"); renderList(); renderEditor(); });
+    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; revealSelected = tool === "screenplay"; if (tool === "screenplay") setSceneNavigator(false); renderList(); renderEditor(); });
     list.querySelectorAll<HTMLButtonElement>("[data-scene]").forEach(button => button.onclick = () => { activeScene = button.dataset.scene || "all"; selected = ordered().find(item => activeScene === "all" || item.fields.sceneId === activeScene)?.id; renderList(); renderEditor(); });
     list.querySelector("#notes-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
   };
@@ -429,9 +435,9 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const navigator = form.querySelector<HTMLButtonElement>("#script-navigator-toggle")!;
       navigator.onclick = () => {
         const open = !workspace.classList.contains("scene-navigator-open");
-        workspace.classList.toggle("scene-navigator-open", open);
-        navigator.setAttribute("aria-expanded", String(open));
+        setSceneNavigator(open);
       };
+      if (localStorage.getItem(sceneNavigatorKey) !== "false") setSceneNavigator(true);
       form.insertAdjacentHTML("beforeend", `<div class="script-new-element" id="script-new-element" hidden role="dialog" aria-label="Choose a new screenplay element"><p>Start the next element as</p><select id="script-new-kind">${screenplayKinds.map(kind => `<option value="${escapeHtml(kind)}">${escapeHtml(kind)}</option>`).join("")}</select><div><button type="button" id="script-new-confirm">Continue</button><button type="button" id="script-new-cancel">Cancel</button></div></div>`);
     }
     if (tool === "notes") mountNoteEditor(form, record.fields.richBody);
