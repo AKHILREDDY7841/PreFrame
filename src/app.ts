@@ -8,7 +8,8 @@ import { exportProject, previewBackup } from "./backup.js";
 import { landingDetails } from "./landing-content.js";
 import { renderHomePage } from "./home-content.js";
 import { mountToolWorkspace, toolWorkspace } from "./tool-ui.js";
-import { clearToolData, exportToolData, restoreToolData, toolRecords, type ToolName } from "./tool-data.js";
+import { clearToolData, exportToolData, newToolRecord, restoreToolData, saveToolRecord, toolRecords, type ToolName } from "./tool-data.js";
+import { classifyScreenplayLines } from "./script-import.js";
 const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; let currentUserId = ""; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
 const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
 const toolDescriptions: Record<string,string> = {
@@ -53,7 +54,7 @@ function dashboard(p:Project){
   const coverStyle=p.coverUrl&&/^(https:|data:image\/)/.test(p.coverUrl)?` style="background-image:url('${esc(p.coverUrl)}')"`:"";
   return shell(`<main class="app-shell project-hub-shell"><aside class="side-nav">${link("/app","← Back to home")}<span>PROJECT WORKSPACE</span></aside><section class="project-page project-hub"><div class="project-hub-heading"${coverStyle}><p class="eyebrow">PREFRAME / PROJECT</p><div class="project-heading-row"><h1>${esc(p.title)}</h1><button id="project-settings-toggle" type="button">Edit project</button></div><p>From first draft to shooting day.</p></div><div class="project-bands">${group("Write")}${group("Visualize")}${group("Plan")}</div><details id="project-management" class="project-management"><summary>Edit project</summary><div class="project-management-body"><label class="project-title">Project title <input id="project-title" value="${esc(p.title)}" maxlength="160"></label><section class="project-cover-settings"><h2>Project cover</h2><p>Choose a landscape image. PreFrame optimizes it before saving.</p><label class="cover-upload">Choose cover image <input id="project-cover-file" type="file" accept="image/jpeg,image/png,image/webp"></label><p id="cover-status" role="status"></p></section><div id="save-status" role="status">${preview?"Saved locally":"Synced"}</div><p role="alert">${esc(errorMessage)}</p>${!preview&&p.ownerId===currentUserId?`<section class="project-danger-zone"><h2>Delete project</h2><p>Moves this project to Recycle bin for 15 days. You can restore it until then.</p><button id="delete-project" type="button">Move to Recycle bin</button></section>`:""}</div></details></section></main>`,true);
 }
-function workspace(p:Project,t:string){if(t!=="import"&&t!=="members")return shell(toolWorkspace(p,t,href),true,accountBadge,true);const label=t==="import"?"Import Script":"Project collaborators";return shell(`<main class="workspace-page"><div class="workspace-head">${link(`/app/projects/${p.id}`,"← Back to project","plain-link")}<span class="project-chip">${esc(p.title)}</span></div><section class="empty-workspace"><p class="eyebrow">PROJECT WORKSPACE</p><h1>${label}</h1>${t==="import"?`<p>Preview a PreFrame archive without changing this project.</p><label id="script-drop-zone" class="script-drop-zone" for="backup-file"><strong>Drop a PreFrame archive here</strong><span>or choose a JSON backup from your device</span><input id="backup-file" type="file" accept=".json,application/json"></label><div id="backup-preview" role="status"></div>`:"<p>Manage collaboration from the Collaboration page.</p>"}</section></main>`,true,accountBadge,true);}
+function workspace(p:Project,t:string){if(t!=="import"&&t!=="members")return shell(toolWorkspace(p,t,href),true,accountBadge,true);const label=t==="import"?"Import Script":"Project collaborators";return shell(`<main class="workspace-page"><div class="workspace-head">${link(`/app/projects/${p.id}`,"← Back to project","plain-link")}<span class="project-chip">${esc(p.title)}</span></div><section class="empty-workspace"><p class="eyebrow">PROJECT WORKSPACE</p><h1>${label}</h1>${t==="import"?`<p>Bring in a screenplay PDF as editable screenplay elements, or preview a PreFrame JSON archive.</p><label id="script-drop-zone" class="script-drop-zone" for="backup-file"><strong>Drop a screenplay PDF or PreFrame archive here</strong><span>Choose a PDF screenplay or a JSON backup from your device</span><input id="backup-file" type="file" accept=".pdf,application/pdf,.json,application/json"></label><div id="backup-preview" role="status"></div>`:"<p>Manage collaboration from the Collaboration page.</p>"}</section></main>`,true,accountBadge,true);}
 function premiumBlocked(feature:string){return `<main class="empty-workspace premium-blocked"><p class="eyebrow">PREMIUM FEATURE</p><h1>${esc(feature)}</h1><p>${esc(feature)} is available on Premium. Upgrade when checkout opens to unlock it for your productions.</p><button type="button" data-premium-feature="${esc(feature)}">View Premium access</button>${link("/app","Back to dashboard","plain-link")}</main>`;}
 function premiumDialog(){return `<dialog id="premium-dialog" class="premium-dialog" aria-labelledby="premium-dialog-title"><button class="premium-dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow">PREFRAME PREMIUM</p><h2 id="premium-dialog-title">Available on Premium</h2><p id="premium-dialog-copy">This feature is available on Premium.</p><button type="button" class="premium-dialog-confirm">Got it</button></dialog>`;}
 function missing(){return shell(`<main class="empty-workspace"><p class="eyebrow">404</p><h1>That page is out of frame.</h1><p>The route does not exist in this preview.</p>${link("/","Return to Preframe","button")}</main>`);}
@@ -109,7 +110,7 @@ async function render(){
       const premium=accountBadge==="Premium"||accountBadge==="Admin";
       root.innerHTML=p?(r.page==="project"?dashboard(p):r.page==="workspace"&&premiumTools.has(r.tool||"")&&!premium?premiumBlocked(toolDescriptions[r.tool!]||"This tool"):workspace(p,r.tool!)):shell(`<main class="empty-workspace"><h1>Project unavailable</h1><p>This project is missing or you do not have permission to open it.</p>${link("/app","Back to projects","button")}</main>`,true);
       if(p&&r.page==="project")wire(p);
-      if(p&&r.page==="workspace"&&r.tool==="import")wireImport();
+      if(p&&r.page==="workspace"&&r.tool==="import")wireImport(p);
       if(p&&r.page==="workspace"&&r.tool!=="import"&&r.tool!=="members"&&!premiumTools.has(r.tool||"")){
         const {data:{user}}=await supabase.auth.getUser();
         mountToolWorkspace(p,r.tool!,preview?"local-demo-owner":user?.id||"anonymous",accountBadge==="Premium"||accountBadge==="Admin").catch(e=>{const status=document.querySelector("#tool-status");if(status)status.textContent=e instanceof Error?e.message:"Could not load tool";});
@@ -159,13 +160,59 @@ async function loadRecycleBin(){
     target.querySelectorAll<HTMLButtonElement>("[data-purge-project]").forEach(button=>button.addEventListener("click",async()=>{if(!confirm("Permanently delete this project and its data? This cannot be undone."))return;button.disabled=true;try{await cloudRepo.permanentlyDeleteProject(button.dataset.purgeProject!);errorMessage="Project permanently deleted.";render();}catch(e){button.disabled=false;target.insertAdjacentHTML("afterbegin",`<p role=\"alert\">${esc(e instanceof Error?e.message:"Could not delete project")}</p>`);}}));
   }catch(e){target.textContent=e instanceof Error?e.message:"Could not load Recycle bin";}
 }
-function wireImport(){
+type PdfTextItem = { str?: string; transform?: number[] };
+async function extractPdfLines(file: File) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("./pdf.worker.mjs", import.meta.url).toString();
+  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const lines: string[] = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const rows = new Map<number, PdfTextItem[]>();
+    let leftMargin = Number.POSITIVE_INFINITY;
+    for (const item of content.items as PdfTextItem[]) {
+      if (!item.str?.trim() || !item.transform) continue;
+      leftMargin = Math.min(leftMargin,item.transform[4]);
+      const row = Math.round(item.transform[5] / 3) * 3;
+      rows.set(row, [...(rows.get(row) || []), item]);
+    }
+    [...rows.entries()].sort(([a], [b]) => b - a).forEach(([, row]) => {
+      const ordered=row.sort((a, b) => (a.transform?.[4] || 0) - (b.transform?.[4] || 0));
+      const indent=Math.max(0,Math.round(((ordered[0]?.transform?.[4] || leftMargin)-leftMargin)/8));
+      lines.push(" ".repeat(indent)+ordered.map(item => item.str).join(" "));
+    });
+  }
+  return lines;
+}
+function wireImport(project: Project){
   const input=document.querySelector<HTMLInputElement>("#backup-file"),target=document.querySelector<HTMLElement>("#backup-preview"),zone=document.querySelector<HTMLElement>("#script-drop-zone");
   const inspect=async(file:File)=>{
     if(!target)return;
-    target.textContent="Validating archive…";
+    const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    target.textContent=pdf ? "Reading screenplay PDF…" : "Validating archive…";
     try{
-      if(file.size>50_000_000)throw new Error("Archive is too large to preview safely");
+      if(file.size>50_000_000)throw new Error(pdf ? "PDF is too large to import safely" : "Archive is too large to preview safely");
+      if(pdf){
+        const elements=classifyScreenplayLines(await extractPdfLines(file));
+        if(!elements.length)throw new Error("No readable screenplay text was found in this PDF");
+        const summary=elements.reduce((counts,item)=>{counts[item.kind]=(counts[item.kind]||0)+1;return counts;},{} as Record<string,number>);
+        target.innerHTML=`<h2>${esc(file.name)}</h2><p>Ready to import ${elements.length} editable screenplay elements.</p><p>${Object.entries(summary).map(([kind,count])=>`${esc(kind)}: ${count}`).join(" · ")}</p><button id="import-screenplay-pdf" type="button">Import into screenplay</button><p class="quiet">This adds to the current screenplay; it does not replace existing work.</p>`;
+        target.querySelector<HTMLButtonElement>("#import-screenplay-pdf")?.addEventListener("click",async()=>{
+          const button=target.querySelector<HTMLButtonElement>("#import-screenplay-pdf")!;
+          button.disabled=true;button.textContent="Importing…";
+          try{
+            const ownerId=preview?"local-demo-owner":currentUserId;
+            const existing=await toolRecords(ownerId,project.id,"screenplay");
+            for(const [index,element] of elements.entries()){
+              const record=newToolRecord(`${element.kind} ${existing.length+index+1}`,{kind:element.kind,text:element.text,order:String(existing.length+index).padStart(6,"0")});
+              await saveToolRecord(ownerId,project.id,"screenplay",record,0);
+            }
+            history.pushState({},"",href(`/app/projects/${project.id}/screenplay`));render();
+          }catch(error){button.disabled=false;button.textContent="Import into screenplay";target.insertAdjacentHTML("beforeend",`<p role="alert">${esc(error instanceof Error?error.message:"Could not import screenplay")}</p>`);}
+        });
+        return;
+      }
       const result=await previewBackup(await file.text());
       target.innerHTML=`<h2>${esc(result.title)}</h2><p>${Object.entries(result.records).map(([name,count])=>`${esc(name)}: ${count}`).join(" · ")}</p><p>Media files: ${result.files}</p><p>${result.warnings.map(esc).join(" ")}</p><p>Preview only. Restore into a separate project will be enabled after the import policy and quota checks are approved.</p>`;
     }catch(e){target.textContent=e instanceof Error?e.message:"Archive validation failed";}

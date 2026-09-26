@@ -26,4 +26,5 @@ await writeFile("site/prototype.html", prototypeHtml);
 await cp("prototype.css", "site/prototype.css");
 await cp("comment.css", "site/comment.css");
 await cp("assets", "site/assets", { recursive: true });
+await cp("node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs", "site/pdf.worker.mjs");
 await writeFile("site/404.html", `<!doctype html><meta charset="utf-8"><script>const b=location.pathname.startsWith('/PreFrame/')?'/PreFrame/':'/';location.replace(b+'?r='+encodeURIComponent(location.pathname.replace('/PreFrame','')+location.search+location.hash))</script>`);

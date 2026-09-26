@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { daypartGreeting } from "../dist/home-content.js";
 import { localDateISO, remapTextComment, scheduleProgress, screenplayKinds } from "../dist/tool-ui.js";
+import { classifyScreenplayLines } from "../dist/script-import.js";
 
 test("screenplay shortcuts follow the specified nine-element order", () => {
   assert.deepEqual(screenplayKinds, ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"]);
@@ -35,4 +36,17 @@ test("schedule progress groups entries by Day before calculating completed shoot
     record("two", "2", "In Progress"),
     record("three", "3", "Not Started"),
   ]), { total: 3, completed: 1, remaining: 2, percentage: 33, inProgress: 1 });
+});
+
+test("PDF screenplay lines become editable screenplay element types", () => {
+  assert.deepEqual(classifyScreenplayLines([
+    "1", "1 EXT. COLLEGE ENTRANCE - DAY", "Students enter through the gates.", "              SIDDHARTH", "        (quietly)", "        I should get the shot.", "CUT TO:"
+  ]), [
+    { kind: "Scene Heading", text: "1 EXT. COLLEGE ENTRANCE - DAY" },
+    { kind: "Action", text: "Students enter through the gates." },
+    { kind: "Character", text: "SIDDHARTH" },
+    { kind: "Parenthetical", text: "(quietly)" },
+    { kind: "Dialogue", text: "I should get the shot." },
+    { kind: "Transition", text: "CUT TO:" }
+  ]);
 });

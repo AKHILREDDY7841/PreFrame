@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 // Serve the bundled `site` output, not TypeScript's unbundled development files.
 const root = join(process.cwd(), "site");
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".map": "application/json" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".map": "application/json" };
 const port = Number(process.env.PORT || 4173);
 createServer(async (req, res) => {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
