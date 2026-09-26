@@ -45,6 +45,7 @@
 .studio-workspace .schedule-progress i{height:100%;display:block;background:#5f94a0}
 .studio-workspace .schedule-field-chooser{margin:0;padding:10px 14px;background:#fff;border:1px solid var(--studio-line);border-radius:5px}
 .studio-workspace .schedule-field-chooser summary{font-size:12px;cursor:pointer}
+.home-donation{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:14px;padding:16px 18px;border:1px solid #b9d4d7;border-radius:12px;background:linear-gradient(110deg,#f7fbfa,#e8f3f3);color:#113747}.home-donation .eyebrow{margin:0 0 4px;font-size:10px;letter-spacing:.16em;color:#2c6a75}.home-donation h3{margin:0;font:20px Georgia,serif}.home-donation p:not(.eyebrow){margin:5px 0 0;font-size:12px;color:#57727b}.home-donation>span{white-space:nowrap;padding:8px 11px;border-radius:999px;background:#1d6574;color:#fff;font-size:12px}
 .studio-workspace .schedule-table-wrap,.studio-workspace .shot-table-wrap{border:1px solid var(--studio-line);border-radius:5px;max-height:none;overflow:auto;background:#fff}
 .studio-workspace .schedule-table{width:100%;min-width:1500px;border-collapse:collapse;font-size:11px}
 .studio-workspace .schedule-table th,.studio-workspace .shot-table th{font-weight:500;text-align:left;padding:16px 10px;background:#f1f6f7;color:#24485e;border:1px solid #e8edef;white-space:nowrap}

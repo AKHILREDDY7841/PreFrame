@@ -4,6 +4,40 @@ export type ToolRecord = { id: string; title: string; fields: Record<string, str
 const DB = "preframe-tools-v1";
 const STORE = "records";
 type Stored = ToolRecord & { key: string; scope: string; tool: ToolName };
+type CloudRow = { id: string; title: string; fields: Record<string, string>; created_at: string; updated_at: string; revision: number };
+
+// Preview and signed-out sessions remain local. Signed-in workspaces use the
+// project-scoped cloud table and keep a local copy for offline recovery.
+async function cloudFor(ownerId: string) {
+  if (ownerId === "local-demo-owner" || ownerId === "anonymous") return null;
+  const { supabase } = await import("./cloud.js");
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id === ownerId ? supabase : null;
+}
+const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision });
+
+async function signedToolImages(ownerId: string, records: ToolRecord[]) {
+  const supabase = await cloudFor(ownerId);
+  if (!supabase) return records;
+  return Promise.all(records.map(async record => {
+    const path = record.fields.imagePath;
+    if (!path) return record;
+    const { data } = await supabase.storage.from("project-media").createSignedUrl(path, 60 * 60);
+    return data?.signedUrl ? { ...record, fields: { ...record.fields, image: data.signedUrl } } : record;
+  }));
+}
+
+export async function storeToolImage(ownerId: string, projectId: string, tool: ToolName, recordId: string, imageDataUrl: string) {
+  const supabase = await cloudFor(ownerId);
+  if (!supabase) return { image: imageDataUrl, imagePath: "" };
+  const image = await fetch(imageDataUrl).then(response => response.blob());
+  const path = `${projectId}/tool-media/${tool}/${recordId}-${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from("project-media").upload(path, image, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
+  if (error) throw new Error(error.message);
+  const { data, error: signError } = await supabase.storage.from("project-media").createSignedUrl(path, 60 * 60);
+  if (signError || !data?.signedUrl) throw new Error(signError?.message || "Could not prepare image");
+  return { image: data.signedUrl, imagePath: path };
+}
 
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -32,12 +66,28 @@ function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) 
 const scope = (ownerId: string, projectId: string, tool: ToolName) => `${ownerId}:${projectId}:${tool}`;
 export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
-  return (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
+  const local = (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
+  const supabase = await cloudFor(ownerId);
+  if (!supabase) return local;
+  const { data, error } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const remote = (data || []).map(row => fromCloud(row as CloudRow));
+  if (!remote.length && local.length) {
+    // One-time, non-destructive migration of this user's existing browser data.
+    for (const record of local) {
+      const { error: uploadError } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: 0 });
+      if (uploadError && uploadError.code !== "40001") throw new Error(uploadError.message);
+    }
+    const { data: uploaded, error: reloadError } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
+    if (reloadError) throw new Error(reloadError.message);
+    return signedToolImages(ownerId, (uploaded || []).map(row => fromCloud(row as CloudRow)));
+  }
+  return signedToolImages(ownerId, remote);
 }
 export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedRevision = 0): Promise<number> {
   const item: Stored = { ...record, revision: expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
   const db = await database();
-  return new Promise<number>((resolve, reject) => {
+  const localRevision = await new Promise<number>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     const request = store.get(item.key);
@@ -50,9 +100,22 @@ export async function saveToolRecord(ownerId: string, projectId: string, tool: T
     tx.onabort = () => { db.close(); reject(new Error("This item changed in another tab. Reload before editing it again.")); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
+  const supabase = await cloudFor(ownerId);
+  if (!supabase) return localRevision;
+  const { data, error } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: expectedRevision });
+  if (error || !data) throw new Error(error?.message || "Could not sync this record");
+  const remote = fromCloud(data as CloudRow);
+  // Keep the offline copy aligned to the authoritative cloud revision.
+  const syncDb = await database();
+  await new Promise<void>((resolve, reject) => { const tx = syncDb.transaction(STORE, "readwrite"); tx.objectStore(STORE).put({ ...remote, key: item.key, scope: item.scope, tool }); tx.oncomplete = () => { syncDb.close(); resolve(); }; tx.onerror = () => { syncDb.close(); reject(tx.error); }; });
+  return remote.revision || localRevision;
 }
 export async function deleteToolRecord(ownerId: string, projectId: string, tool: ToolName, id: string): Promise<void> {
   await transaction("readwrite", store => store.delete(`${scope(ownerId, projectId, tool)}:${id}`));
+  const supabase = await cloudFor(ownerId);
+  if (!supabase) return;
+  const { error } = await supabase.rpc("delete_project_tool_record", { p_project: projectId, p_record: id });
+  if (error) throw new Error(error.message);
 }
 export function newToolRecord(title: string, fields: Record<string, string> = {}): ToolRecord {
   const timestamp = new Date().toISOString();

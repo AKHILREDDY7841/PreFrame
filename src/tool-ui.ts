@@ -2,7 +2,9 @@ import { mountNoteEditor } from "./note-editor.js";
 import { studioDocument } from "./studio-documents.js";
 import { studioShell } from "./studio-shell.js";
 import type { Project } from "./domain.js";
-import { deleteToolRecord, newToolRecord, saveToolRecord, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
+import { deleteToolRecord, newToolRecord, saveToolRecord, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
+
+let activeToolChannel: { unsubscribe: () => unknown } | null = null;
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 const labels: Record<ToolName, string> = { screenplay: "Screenplay", notes: "Docs & Notes", shots: "Shot Lists", storyboards: "Storyboards", schedule: "Production Schedule", locations: "Locations", "call-sheets": "Call Sheets" };
@@ -132,7 +134,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       savedRevisions.set(record.id, revision);
       record.revision = revision;
       record.updatedAt = snapshot.updatedAt;
-      if (isCurrent()) status.textContent = "Saved on this device · Cloud sync is not connected yet";
+      if (isCurrent()) status.textContent = userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
     });
     saveQueue = task.catch(() => {});
     return task;
@@ -298,7 +300,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       editor.querySelectorAll<HTMLInputElement>("[data-visual-image]").forEach(input => input.onchange = async () => {
         const item = records.find(candidate => candidate.id === input.dataset.visualImage); const file = input.files?.[0];
         if (!item || !file) return;
-        try { item.fields.image = await compressImage(file); await persist(item); renderEditor(); }
+        try { Object.assign(item.fields, await storeToolImage(userId, project.id, tool, item.id, await compressImage(file))); await persist(item); renderEditor(); }
         catch (error) { status.textContent = error instanceof Error ? error.message : "Could not save image"; }
       });
       editor.querySelectorAll<HTMLButtonElement>("[data-visual-delete]").forEach(button => button.onclick = async () => {
@@ -453,7 +455,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
     editor.querySelector<HTMLInputElement>("#tool-image-file")?.addEventListener("change", async event => {
       const file = (event.currentTarget as HTMLInputElement).files?.[0]; if (!file) return;
-      try { record.fields.image = await compressImage(file); await persist(record); renderEditor(); }
+      try { Object.assign(record.fields, await storeToolImage(userId, project.id, tool, record.id, await compressImage(file))); await persist(record); renderEditor(); }
       catch (error) { status.textContent = error instanceof Error ? error.message : "Could not save image"; }
     });
     editor.querySelector("#tool-publish")?.addEventListener("click", async () => {
@@ -525,7 +527,20 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
   };
   renderList(); renderEditor();
-  status.textContent = "Saved on this device · Cloud sync is not connected yet";
+  status.textContent = userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+  if (userId !== "local-demo-owner" && userId !== "anonymous") {
+    void import("./cloud.js").then(({ supabase }) => {
+      activeToolChannel?.unsubscribe();
+      activeToolChannel = supabase.channel(`project-tools:${project.id}:${tool}`).on("postgres_changes", { event: "*", schema: "public", table: "project_tool_records", filter: `project_id=eq.${project.id}` }, async payload => {
+        const changed = (payload.new as { tool?: string } | undefined)?.tool || (payload.old as { tool?: string } | undefined)?.tool;
+        if (changed !== tool || !isCurrent()) return;
+        records = await toolRecords(userId, project.id, tool);
+        savedRevisions.clear(); records.forEach(item => savedRevisions.set(item.id, item.revision || 0));
+        if (!selected || !records.some(item => item.id === selected)) selected = records[0]?.id;
+        renderList(); renderEditor(); status.textContent = "Updated by a collaborator";
+      }).subscribe();
+    });
+  }
   document.querySelector<HTMLButtonElement>("#schedule-columns")?.addEventListener("click", () => {
     scheduleChooserOpen = true;
     renderEditor();
