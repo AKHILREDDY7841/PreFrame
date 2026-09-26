@@ -94,7 +94,7 @@ export function toolWorkspace(project: Project, name: string, href: (path: strin
   const tool: ToolName = name === "calendar" ? "schedule" : name as ToolName;
   const label = name === "calendar" ? "Calendar" : labels[tool];
   const write = tool === "screenplay" || tool === "notes";
-  const content = `<div class="studio-toolbar"><h2>${label}</h2><div class="studio-toolbar-actions">${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}${["schedule", "shots", "storyboards"].includes(tool) ? '<button id="studio-print" type="button">Print / PDF</button>' : ""}<button id="studio-export" type="button">Export CSV</button><button id="tool-add" class="button" type="button">＋ ${tool === "screenplay" ? "Add element" : tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add shoot day" : tool === "locations" ? "Add location" : "New call sheet"}</button></div></div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article>`;
+  const content = `<div class="studio-toolbar"><h2>${label}</h2><div class="studio-toolbar-actions">${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}${tool === "schedule" ? '<button id="schedule-columns" type="button" aria-label="Choose production schedule columns">☷ Columns</button>' : ""}${["schedule", "shots", "storyboards"].includes(tool) ? '<button id="studio-print" type="button">Print / PDF</button>' : ""}<button id="studio-export" type="button">Export CSV</button><button id="tool-add" class="button" type="button">＋ ${tool === "screenplay" ? "Add element" : tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add shoot day" : tool === "locations" ? "Add location" : "New call sheet"}</button></div></div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article>`;
   return studioShell(project.id, project.title, name, label, content, href);
 }
 
@@ -526,6 +526,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   };
   renderList(); renderEditor();
   status.textContent = "Saved on this device · Cloud sync is not connected yet";
+  document.querySelector<HTMLButtonElement>("#schedule-columns")?.addEventListener("click", () => {
+    scheduleChooserOpen = true;
+    renderEditor();
+    requestAnimationFrame(() => editor.querySelector<HTMLElement>(".schedule-field-chooser")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  });
   document.querySelector("#tool-add")?.addEventListener("click", async () => {
     if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
     const prior = records.find(item => item.id === selected);
