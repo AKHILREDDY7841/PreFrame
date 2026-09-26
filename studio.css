@@ -203,7 +203,7 @@
    dimensions live in styles.css inside @media print; they must not constrain editing. */
 .studio-workspace[data-tool=screenplay] .script-layout{display:block!important;padding:clamp(24px,3vw,48px) clamp(24px,7vw,140px) 64px!important}
 .studio-workspace[data-tool=screenplay] .script-pages{display:block!important;width:min(100%,1120px)!important;margin:0 auto!important}
-.studio-workspace[data-tool=screenplay] .script-page{box-sizing:border-box;display:block;width:100%!important;max-width:none!important;min-width:0!important;min-height:clamp(720px,78vh,980px)!important;margin:0!important;padding:clamp(36px,4vw,68px) clamp(44px,7vw,112px)!important;flex:none!important}
+.studio-workspace[data-tool=screenplay] .script-page{box-sizing:border-box;display:block;width:100%!important;max-width:none!important;min-width:0!important;aspect-ratio:8.5/11;min-height:1056px!important;margin:0!important;padding:clamp(36px,4vw,68px) clamp(44px,7vw,112px)!important;flex:none!important}
 .studio-workspace[data-tool=screenplay] .script-page+.script-page{margin-top:28px!important}
 .studio-workspace[data-tool=screenplay] .script-page-content{max-width:780px;margin:0 auto}
 .studio-workspace[data-tool=screenplay].scene-navigator-open .tool-list{top:168px;right:auto;left:18px;width:260px;max-height:calc(100dvh - 188px);padding:14px;box-shadow:0 16px 42px #17384724}
