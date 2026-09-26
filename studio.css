@@ -228,3 +228,8 @@
 .studio-workspace .calendar-cell>button small{font-size:11px}
 .studio-detail-panel p,.studio-location-status{font-size:13px}
 @media(max-width:800px){.studio-sidebar nav a{font-size:13px}.studio-workspace .schedule-table{font-size:11px}}
+
+/* Tool pages open directly into their working surface; project context stays with the tool title. */
+.studio-utility-row{justify-content:center;position:relative}.studio-utility-row .studio-project-button{position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:13px}
+.studio-toolbar .studio-tool-title{display:flex;align-items:baseline;gap:12px}.studio-toolbar .studio-tool-title small{color:#718893;font:500 14px/1.2 ui-sans-serif,system-ui,sans-serif;letter-spacing:0}
+@media(max-width:640px){.studio-utility-row .studio-project-button{right:12px;padding:7px 9px;font-size:11px}.studio-toolbar .studio-tool-title{flex-direction:column;gap:3px}.studio-toolbar .studio-tool-title small{font-size:12px}}
