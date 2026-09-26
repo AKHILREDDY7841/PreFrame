@@ -86,8 +86,8 @@ function screenplayEditorMarkup(project: Project, selected: ToolRecord, items: T
   const element = (item: ToolRecord) => {
     const kind = screenplayKinds.includes(item.fields.kind as typeof screenplayKinds[number]) ? item.fields.kind : "Text";
     const kindClass = kind.toLowerCase().replaceAll(" ", "-");
-    if (item.id !== selected.id) return `<button type="button" class="script-block script-block-preview script-${kindClass}" data-script-select="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(kind)} element">${escapeHtml(item.fields.text || " ")}</button>`;
-    return `<div class="script-block script-block-active script-${kindClass}"><span class="script-block-kind">${escapeHtml(kind)}</span><textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(2, Math.min(12, (item.fields.text || "").split("\n").length + 1))}" spellcheck="true">${escapeHtml(item.fields.text || "")}</textarea><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
+    if (item.id !== selected.id) return `<button type="button" class="script-block script-block-preview script-${kindClass}" data-script-id="${escapeHtml(item.id)}" data-script-select="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(kind)} element">${escapeHtml(item.fields.text || " ")}</button>`;
+    return `<div class="script-block script-block-active script-${kindClass}" data-script-id="${escapeHtml(item.id)}"><span class="script-block-kind">${escapeHtml(kind)}</span><textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(2, Math.min(12, (item.fields.text || "").split("\n").length + 1))}" spellcheck="true">${escapeHtml(item.fields.text || "")}</textarea><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
   };
   return `<form id="tool-form" class="script-editor-form"><div class="script-toolbar"><div class="script-toolbar-main"><label class="script-kind-label">Element <select name="kind">${screenplayKinds.map((kind, index) => `<option value="${escapeHtml(kind)}" ${selected.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)} — Ctrl+${index}</option>`).join("")}</select></label><span class="script-shortcuts">Tab to switch · Ctrl+0–8 · Alt+Shift+0–8</span></div><div class="script-toolbar-actions"><button type="button" id="tool-up" aria-label="Move element up">↑</button><button type="button" id="tool-down" aria-label="Move element down">↓</button><button type="button" id="script-comments-toggle" aria-expanded="false" aria-controls="script-comments-panel">View comments</button><button type="button" id="tool-print">Print / PDF</button><button type="button" id="tool-remove" class="danger-text">Delete element</button></div></div><input type="hidden" name="title" value="${escapeHtml(selected.title)}"><div class="script-layout"><div class="script-page" aria-label="Screenplay draft"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-page-content">${items.map(element).join("")}</div></div><aside class="tool-comments script-comments" id="script-comments-panel" aria-label="Screenplay comments" hidden><div class="script-comments-head"><h2>Comments</h2><button type="button" id="script-comments-close" aria-label="Close comments">×</button></div><div id="tool-comment-list"></div></aside></div><div class="script-comment-composer" id="script-comment-composer" hidden><p>Comment on <q id="script-selected-quote"></q></p><label for="tool-comment-body">Comment</label><textarea id="tool-comment-body" rows="3" placeholder="Write a note about this passage"></textarea><div><button type="button" id="tool-comment-add">Post comment</button><button type="button" id="script-comment-cancel">Cancel</button></div></div></form>`;
 }
@@ -105,6 +105,17 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   const list = document.querySelector<HTMLElement>("#tool-list")!;
   const editor = document.querySelector<HTMLElement>("#tool-editor")!;
   const status = document.querySelector<HTMLElement>("#tool-status")!;
+  const workspace = document.querySelector<HTMLElement>(".studio-workspace")!;
+  const sidebarToggle = document.querySelector<HTMLButtonElement>("#studio-sidebar-toggle");
+  const sidebarKey = "preframe-studio-sidebar";
+  const setSidebar = (open: boolean) => {
+    workspace.classList.toggle("studio-sidebar-open", open);
+    sidebarToggle?.setAttribute("aria-expanded", String(open));
+    localStorage.setItem(sidebarKey, String(open));
+  };
+  setSidebar(localStorage.getItem(sidebarKey) === "true");
+  sidebarToggle?.addEventListener("click", () => setSidebar(!workspace.classList.contains("studio-sidebar-open")));
+  workspace.querySelectorAll<HTMLAnchorElement>(".studio-sidebar a[data-route]").forEach(link => link.addEventListener("click", () => setSidebar(false)));
   const isCurrent = () => document.querySelector<HTMLElement>(".tool-page")?.dataset.project === project.id && document.querySelector<HTMLElement>(".tool-page")?.dataset.tool === name;
   let records = await toolRecords(userId, project.id, tool);
   const screenplayScenes = tool === "shots" || tool === "storyboards" ? (await toolRecords(userId, project.id, "screenplay")).filter(item => item.fields.kind === "Scene Heading") : [];
@@ -115,6 +126,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let boardView = "grid";
   let visualQuery = "";
   let inspectorOpen = false;
+  let revealSelected = false;
   let calendarView: "timeline" | "month" | "week" | "day" = "month";
   const scheduleViewKey = `preframe-schedule-fields:${userId}:${project.id}`;
   let savedScheduleFields: string[] | null = null;
@@ -167,7 +179,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const elementIndex = items.length ? items.map((record, index) => `<button type="button" class="tool-list-item ${record.id === selected ? "selected" : ""}" data-select="${escapeHtml(record.id)}"><small>${index + 1 < 10 ? `0${index + 1}` : index + 1}${tool === "screenplay" ? ` · ${escapeHtml(record.fields.kind || "Action")}` : ""}</small><strong>${escapeHtml(record.title || "Untitled")}</strong></button>`).join("") : '<p class="tool-empty">Nothing here yet. Create the first item.</p>';
       list.innerHTML = tool === "screenplay" ? `${sceneNav}<details class="script-element-index"><summary>All elements <span>${items.length}</span></summary>${elementIndex}</details>` : `<h2>Items <span>${items.length}</span></h2>${elementIndex}`;
     }
-    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; renderList(); renderEditor(); });
+    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); });
     list.querySelectorAll<HTMLButtonElement>("[data-scene]").forEach(button => button.onclick = () => { activeScene = button.dataset.scene || "all"; selected = ordered().find(item => activeScene === "all" || item.fields.sceneId === activeScene)?.id; renderList(); renderEditor(); });
     list.querySelector("#notes-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
   };
@@ -419,7 +431,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       input.dispatchEvent(new Event("input", { bubbles: true }));
       if (choice.value === "custom") input.focus();
     }));
-    if (tool === "screenplay") editor.querySelectorAll<HTMLButtonElement>("[data-script-select]").forEach(button => button.onclick = () => { selected = button.dataset.scriptSelect; renderList(); renderEditor(); editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus(); });
+    if (tool === "screenplay") editor.querySelectorAll<HTMLButtonElement>("[data-script-select]").forEach(button => button.onclick = () => { selected = button.dataset.scriptSelect; revealSelected = true; renderList(); renderEditor(); });
     if (!snapshot) form.addEventListener("input", () => {
       const values = Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
       if ((tool === "shots" || tool === "storyboards") && !values.image && record.fields.image?.startsWith("data:image/")) delete values.image;
@@ -465,6 +477,24 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
     if (tool === "screenplay") {
       const area = form.querySelector<HTMLTextAreaElement>('textarea[name="text"]')!;
+      const moveCursorTo = (offset: -1 | 1) => {
+        const items = ordered();
+        const index = items.findIndex(item => item.id === record.id);
+        const next = items[index + offset];
+        if (!next) return false;
+        selected = next.id;
+        revealSelected = true;
+        renderList();
+        renderEditor();
+        requestAnimationFrame(() => {
+          const nextArea = editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]');
+          if (!nextArea) return;
+          nextArea.focus();
+          const position = offset < 0 ? nextArea.value.length : 0;
+          nextArea.setSelectionRange(position, position);
+        });
+        return true;
+      };
       form.querySelector<HTMLSelectElement>('select[name="kind"]')!.addEventListener("input", event => {
         const kind = (event.currentTarget as HTMLSelectElement).value;
         const block = form.querySelector<HTMLElement>(".script-block-active")!;
@@ -474,6 +504,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const sizeScriptInput = () => { area.style.height = "0px"; area.style.height = `${Math.max(48, area.scrollHeight)}px`; };
       sizeScriptInput();
       area.addEventListener("input", sizeScriptInput);
+      area.addEventListener("keydown", event => {
+        const atStart = area.selectionStart === 0 && area.selectionEnd === 0;
+        const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
+        if (event.key === "ArrowUp" && atStart && moveCursorTo(-1)) event.preventDefault();
+        if (event.key === "ArrowDown" && atEnd && moveCursorTo(1)) event.preventDefault();
+      });
       const selectionAction = form.querySelector<HTMLButtonElement>("#script-comment-open")!;
       const composer = form.querySelector<HTMLElement>("#script-comment-composer")!;
       const panel = form.querySelector<HTMLElement>("#script-comments-panel")!;
@@ -512,6 +548,10 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         record.fields.comments = JSON.stringify(comments); await persist(record);
         editor.querySelector<HTMLTextAreaElement>("#tool-comment-body")!.value = ""; composer.hidden = true; selectedPassage = null; panel.hidden = false; toggle.setAttribute("aria-expanded", "true"); showComments();
       });
+      if (revealSelected) {
+        revealSelected = false;
+        requestAnimationFrame(() => editor.querySelector<HTMLElement>(`[data-script-id="${CSS.escape(record.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      }
     }
     if (tool === "screenplay") form.addEventListener("keydown", event => {
       if (event.key === "Tab" && event.target instanceof HTMLTextAreaElement && event.target.name === "text" && !event.ctrlKey && !event.altKey && !event.metaKey) {

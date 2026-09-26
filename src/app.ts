@@ -211,7 +211,9 @@ function wireImport(project: Project){
               const record=newToolRecord(`${element.kind} ${existing.length+index+1}`,{kind:element.kind,text:element.text,order:String(existing.length+index).padStart(6,"0")});
               await saveToolRecord(ownerId,project.id,"screenplay",record,0);
             }
-            history.pushState({},"",href(`/app/projects/${project.id}/screenplay`));render();
+            target.innerHTML=`<div class="script-import-success" role="status"><strong>Imported successfully</strong><p>${elements.length} screenplay elements were added to <b>${esc(project.title)}</b>.</p><button id="open-imported-screenplay" type="button">Open screenplay</button><button id="import-another-script" type="button">Import another file</button></div>`;
+            target.querySelector<HTMLButtonElement>("#open-imported-screenplay")?.addEventListener("click",()=>{history.pushState({},"",href(`/app/projects/${project.id}/screenplay`));render();});
+            target.querySelector<HTMLButtonElement>("#import-another-script")?.addEventListener("click",()=>{input!.value="";target.textContent="Choose another screenplay PDF or PreFrame archive.";input!.focus();});
           }catch(error){button.disabled=false;button.textContent="Import into screenplay";target.insertAdjacentHTML("beforeend",`<p role="alert">${esc(error instanceof Error?error.message:"Could not import screenplay")}</p>`);}
         });
         return;

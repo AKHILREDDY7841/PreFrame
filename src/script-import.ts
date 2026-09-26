@@ -27,7 +27,13 @@ export function classifyScreenplayLines(lines: string[]): ImportedScreenplayElem
     else if (indent >= 12 && isUppercaseCue(text) && text.length <= 48 && !/[.!?]$/.test(text)) kind = "Character";
     else if (dialogueFollows && indent >= 8) kind = "Dialogue";
     else kind = "Action";
-    result.push({ kind, text });
+    // PDFs usually extract each visual line separately. Keep screenplay
+    // structure, but join wrapped Action and Dialogue lines into the single
+    // editable blocks writers expect in a screenplay editor.
+    const previous = result.at(-1);
+    const canContinue = previous && previous.kind === kind && (kind === "Action" || kind === "Dialogue") && !/[.!?…:]$/.test(previous.text);
+    if (canContinue) previous.text += `${previous.text.endsWith("-") ? "" : " "}${text}`;
+    else result.push({ kind, text });
     dialogueFollows = kind === "Character" || kind === "Parenthetical" || (kind === "Dialogue" && indent >= 8);
   }
   return result;
