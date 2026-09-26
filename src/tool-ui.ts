@@ -18,8 +18,36 @@ const fields: Record<ToolName, { key: string; label: string; type?: string }[]> 
   "call-sheets": [{ key: "date", label: "Shoot date", type: "date" }, { key: "call", label: "General call", type: "time" }, { key: "wrap", label: "Estimated wrap", type: "time" }, { key: "location", label: "Location" }, { key: "address", label: "Address / access instructions" }, { key: "weather", label: "Weather (manual, with source/date)" }, { key: "castCalls", label: "Cast calls / makeup" }, { key: "crewCalls", label: "Crew and department calls" }, { key: "meals", label: "Meals / breaks" }, { key: "moves", label: "Company moves / parking" }, { key: "contacts", label: "Emergency contacts (verified)" }, { key: "hospital", label: "Nearest hospital (verified)" }, { key: "schedule", label: "Schedule snapshot" }, { key: "notes", label: "Important notes / requirements" }],
 };
 export const screenplayKinds = ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"] as const;
+export type ScreenplayKind = typeof screenplayKinds[number];
+export type ScreenplayScene = { id: string; number: number; heading: string; startBlockId: string; endBlockId: string };
+const screenplayTabKinds: ScreenplayKind[] = ["Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text", "Act"];
+const enterTransitions: Partial<Record<ScreenplayKind, ScreenplayKind>> = { "Scene Heading": "Action", Action: "Action", Character: "Dialogue", Dialogue: "Action", Parenthetical: "Dialogue", Transition: "Scene Heading", Shot: "Action", Text: "Action", Act: "Scene Heading" };
+export function nextScreenplayKind(kind: string, empty = false): ScreenplayKind {
+  const current = screenplayKinds.includes(kind as ScreenplayKind) ? kind as ScreenplayKind : "Action";
+  if (empty && current === "Dialogue") return "Action";
+  return enterTransitions[current] || "Action";
+}
+export function cycleScreenplayKind(kind: string, backwards = false): ScreenplayKind {
+  const index = screenplayTabKinds.indexOf(kind as ScreenplayKind);
+  return screenplayTabKinds[(index + (backwards ? screenplayTabKinds.length - 1 : 1) + screenplayTabKinds.length) % screenplayTabKinds.length];
+}
+export function deriveScreenplayScenes(records: ToolRecord[]): ScreenplayScene[] {
+  const ordered = [...records].sort((a, b) => (a.fields.order || a.createdAt).localeCompare(b.fields.order || b.createdAt));
+  const headings = ordered.map((record, index) => ({ record, index })).filter(({ record }) => record.fields.kind === "Scene Heading");
+  return headings.map(({ record, index }, sceneIndex) => ({ id: record.id, number: sceneIndex + 1, heading: (record.fields.text || record.title || "Untitled scene").split("\n")[0], startBlockId: record.id, endBlockId: headings[sceneIndex + 1] ? ordered[headings[sceneIndex + 1].index - 1].id : ordered.at(-1)?.id || record.id }));
+}
+export function characterSuggestions(records: ToolRecord[], query: string): string[] {
+  const key = query.trim().toLocaleUpperCase();
+  return [...new Set(records.filter(record => record.fields.kind === "Character").map(record => record.fields.text.trim().toLocaleUpperCase()).filter(Boolean))].filter(name => !key || name.includes(key)).sort((a, b) => a.localeCompare(b));
+}
+export function sceneHeadingSuggestions(records: ToolRecord[], query: string): string[] {
+  const key = query.trim().toLocaleUpperCase();
+  const defaults = ["INT.", "EXT.", "INT./EXT."];
+  const existing = records.filter(record => record.fields.kind === "Scene Heading").map(record => record.fields.text.trim().toLocaleUpperCase()).filter(Boolean);
+  return [...new Set([...defaults, ...existing])].filter(value => !key || value.includes(key)).slice(0, 6);
+}
 export const localDateISO = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-type TextComment = { id: string; from: number; to: number; quote: string; body: string; orphaned: boolean; resolved: boolean };
+type TextComment = { id: string; blockId?: string; from: number; to: number; quote: string; body: string; orphaned: boolean; resolved: boolean; replies?: { id: string; body: string; createdAt: string }[] };
 export function remapTextComment(comment: TextComment, before: string, after: string): TextComment {
   if (before === after || comment.orphaned) return comment;
   let prefix = 0;
@@ -87,7 +115,7 @@ function screenplayEditorMarkup(project: Project, selected: ToolRecord, items: T
     const kind = screenplayKinds.includes(item.fields.kind as typeof screenplayKinds[number]) ? item.fields.kind : "Text";
     const kindClass = kind.toLowerCase().replaceAll(" ", "-");
     if (item.id !== selected.id) return `<button type="button" class="script-block script-block-preview script-${kindClass}" data-script-id="${escapeHtml(item.id)}" data-script-select="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(kind)} element">${escapeHtml(item.fields.text || " ")}</button>`;
-    return `<div class="script-block script-block-active script-${kindClass}" data-script-id="${escapeHtml(item.id)}"><span class="script-block-kind">${escapeHtml(kind)}</span><textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(2, Math.min(12, (item.fields.text || "").split("\n").length + 1))}" spellcheck="true">${escapeHtml(item.fields.text || "")}</textarea><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
+    return `<div class="script-block script-block-active script-${kindClass} ${item.fields.comments && item.fields.comments !== "[]" ? "script-block-commented" : ""}" data-script-id="${escapeHtml(item.id)}"><span class="script-block-kind">${escapeHtml(kind)}</span><textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(2, Math.min(12, (item.fields.text || "").split("\n").length + 1))}" spellcheck="true">${escapeHtml(item.fields.text || "")}</textarea><div class="script-suggestions" id="script-suggestions" role="listbox" hidden></div><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
   };
   const pages: ToolRecord[][] = [];
   let page: ToolRecord[] = [];
@@ -99,7 +127,7 @@ function screenplayEditorMarkup(project: Project, selected: ToolRecord, items: T
   }
   if (page.length) pages.push(page);
   const pageMarkup = pages.map((entries, index) => `<article class="script-page" aria-label="Screenplay page ${index + 1}"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Page ${index + 1}</span></div><div class="script-page-content">${entries.map(element).join("")}</div></article>`).join("");
-  return `<form id="tool-form" class="script-editor-form"><div class="script-toolbar"><div class="script-toolbar-main"><label class="script-kind-label">Element <select name="kind">${screenplayKinds.map((kind, index) => `<option value="${escapeHtml(kind)}" ${selected.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)} — Ctrl+${index}</option>`).join("")}</select></label><span class="script-shortcuts">Tab to switch · Ctrl+0–8 · Alt+Shift+0–8</span></div><div class="script-toolbar-actions"><button type="button" id="script-navigator-toggle" aria-expanded="false" aria-controls="tool-list">Scene navigator</button><button type="button" id="tool-up" aria-label="Move element up">↑</button><button type="button" id="tool-down" aria-label="Move element down">↓</button><button type="button" id="script-comments-toggle" aria-expanded="false" aria-controls="script-comments-panel">View comments</button><button type="button" id="tool-print">Export PDF</button><button type="button" id="tool-remove" class="danger-text">Delete element</button></div></div><input type="hidden" name="title" value="${escapeHtml(selected.title)}"><div class="script-layout"><div class="script-pages">${pageMarkup}</div><aside class="tool-comments script-comments" id="script-comments-panel" aria-label="Screenplay comments" hidden><div class="script-comments-head"><h2>Comments</h2><button type="button" id="script-comments-close" aria-label="Close comments">×</button></div><div id="tool-comment-list"></div></aside></div><div class="script-comment-composer" id="script-comment-composer" hidden><p>Comment on <q id="script-selected-quote"></q></p><label for="tool-comment-body">Comment</label><textarea id="tool-comment-body" rows="3" placeholder="Write a note about this passage"></textarea><div><button type="button" id="tool-comment-add">Post comment</button><button type="button" id="script-comment-cancel">Cancel</button></div></div></form>`;
+  return `<form id="tool-form" class="script-editor-form"><div class="script-toolbar"><div class="script-toolbar-main"><label class="script-kind-label">Element <select name="kind">${screenplayKinds.map((kind, index) => `<option value="${escapeHtml(kind)}" ${selected.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)} — Ctrl+${index}</option>`).join("")}</select></label><span class="script-shortcuts">Tab changes element · Ctrl+1–7 formats the current block</span></div><div class="script-toolbar-actions"><button type="button" id="script-navigator-toggle" aria-expanded="false" aria-controls="tool-list">Scenes</button><button type="button" id="tool-up" aria-label="Move element up">↑</button><button type="button" id="tool-down" aria-label="Move element down">↓</button><button type="button" id="script-comments-toggle" aria-expanded="false" aria-controls="script-comments-panel">Comments</button><button type="button" id="tool-print">Export PDF</button><button type="button" id="tool-remove" class="danger-text">Delete element</button></div></div><input type="hidden" name="title" value="${escapeHtml(selected.title)}"><div class="script-layout"><div class="script-pages">${pageMarkup}</div><aside class="tool-comments script-comments" id="script-comments-panel" aria-label="Screenplay comments" hidden><div class="script-comments-head"><h2>Comments</h2><button type="button" id="script-comments-close" aria-label="Close comments">×</button></div><div id="tool-comment-list"></div></aside></div><div class="script-comment-composer" id="script-comment-composer" hidden><p>Comment on <q id="script-selected-quote"></q></p><label for="tool-comment-body">Comment</label><textarea id="tool-comment-body" rows="3" placeholder="Write a note about this passage"></textarea><div><button type="button" id="tool-comment-add">Post comment</button><button type="button" id="script-comment-cancel">Cancel</button></div></div></form>`;
 }
 
 export function toolWorkspace(project: Project, name: string, href: (path: string) => string): string {
@@ -194,12 +222,17 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     } else if (tool === "notes") {
       list.innerHTML = `<h2>All documents <span>${items.length}</span></h2>${items.length ? items.map(item => `<button type="button" class="tool-list-item ${item.id === selected ? "selected" : ""}" data-select="${escapeHtml(item.id)}"><strong>▤ ${escapeHtml(item.title)}</strong><small>${new Date(item.updatedAt).toLocaleDateString()}</small></button>`).join("") : '<div class="notes-list-empty"><span>▤</span><p>No documents yet</p><button type="button" id="notes-start">＋ New document</button></div>'}`;
     } else {
-      const scenes = tool === "screenplay" ? items.filter(record => record.fields.kind === "Scene Heading") : [];
-      const sceneNav = tool === "screenplay" ? `<nav class="scene-nav" aria-label="Scene navigator"><h2>Scene navigator <span>${scenes.length}</span></h2>${scenes.length ? scenes.map((record, index) => `<button type="button" class="scene-nav-item ${record.id === selected ? "selected" : ""}" data-select="${record.id}"><span>${String(index + 1).padStart(2, "0")}</span>${escapeHtml((record.fields.text || record.title || "Untitled scene").split("\n")[0])}</button>`).join("") : '<p class="tool-empty">Add a Scene Heading to build your navigator.</p>'}</nav>` : "";
+      const scenes = tool === "screenplay" ? deriveScreenplayScenes(items) : [];
+      const sceneNav = tool === "screenplay" ? `<nav class="scene-nav" aria-label="Scene navigator"><div class="scene-nav-head"><h2>Scenes <span>${scenes.length}</span></h2><button type="button" id="script-navigator-close" aria-label="Close scene navigator">←</button></div><input id="scene-nav-search" type="search" placeholder="Find a scene" aria-label="Search scenes">${scenes.length ? `<div id="scene-nav-results">${scenes.map(scene => `<button type="button" class="scene-nav-item ${scene.id === selected ? "selected" : ""}" data-select="${escapeHtml(scene.id)}"><span>${String(scene.number).padStart(2, "0")}</span>${escapeHtml(scene.heading)}</button>`).join("")}</div>` : '<p class="tool-empty">Add a Scene Heading to build your navigator.</p>'}</nav>` : "";
       const elementIndex = items.length ? items.map((record, index) => `<button type="button" class="tool-list-item ${record.id === selected ? "selected" : ""}" data-select="${escapeHtml(record.id)}"><small>${index + 1 < 10 ? `0${index + 1}` : index + 1}${tool === "screenplay" ? ` · ${escapeHtml(record.fields.kind || "Action")}` : ""}</small><strong>${escapeHtml(record.title || "Untitled")}</strong></button>`).join("") : '<p class="tool-empty">Nothing here yet. Create the first item.</p>';
       list.innerHTML = tool === "screenplay" ? `${sceneNav}<details class="script-element-index"><summary>All elements <span>${items.length}</span></summary>${elementIndex}</details>` : `<h2>Items <span>${items.length}</span></h2>${elementIndex}`;
     }
     list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); });
+    list.querySelector<HTMLButtonElement>("#script-navigator-close")?.addEventListener("click", () => setSceneNavigator(false));
+    list.querySelector<HTMLInputElement>("#scene-nav-search")?.addEventListener("input", event => {
+      const query = (event.currentTarget as HTMLInputElement).value.trim().toLocaleLowerCase();
+      list.querySelectorAll<HTMLButtonElement>("#scene-nav-results [data-select]").forEach(button => { button.hidden = !button.textContent!.toLocaleLowerCase().includes(query); });
+    });
     list.querySelectorAll<HTMLButtonElement>("[data-scene]").forEach(button => button.onclick = () => { activeScene = button.dataset.scene || "all"; selected = ordered().find(item => activeScene === "all" || item.fields.sceneId === activeScene)?.id; renderList(); renderEditor(); });
     list.querySelector("#notes-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
   };
@@ -448,10 +481,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const open = !workspace.classList.contains("scene-navigator-open");
         setSceneNavigator(open);
       };
-      // The navigator is part of the writing surface, so each screenplay visit
-      // starts with it visible. The button still closes it for the current view.
-      setSceneNavigator(true);
-      form.insertAdjacentHTML("beforeend", `<div class="script-new-element" id="script-new-element" hidden role="dialog" aria-label="Choose a new screenplay element"><p>Start the next element as</p><select id="script-new-kind">${screenplayKinds.map(kind => `<option value="${escapeHtml(kind)}">${escapeHtml(kind)}</option>`).join("")}</select><div><button type="button" id="script-new-confirm">Continue</button><button type="button" id="script-new-cancel">Cancel</button></div></div>`);
+      setSceneNavigator(localStorage.getItem(sceneNavigatorKey) !== "false");
     }
     if (tool === "notes") mountNoteEditor(form, record.fields.richBody);
     if (tool === "shots") form.querySelectorAll<HTMLSelectElement>("[data-shot-choice]").forEach(choice => choice.addEventListener("change", () => {
@@ -555,19 +585,28 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       sizeScriptInput();
       area.addEventListener("input", sizeScriptInput);
       area.addEventListener("blur", flushScreenplaySave);
-      const newElementMenu = form.querySelector<HTMLElement>("#script-new-element")!;
-      const newKind = form.querySelector<HTMLSelectElement>("#script-new-kind")!;
-      const suggestedKinds: Record<string, string> = { "Scene Heading": "Action", Action: "Character", Character: "Dialogue", Dialogue: "Action", Parenthetical: "Dialogue", Transition: "Scene Heading", Shot: "Action", Text: "Action" };
-      const closeNewElementMenu = () => { newElementMenu.hidden = true; area.focus(); };
-      const openNewElementMenu = () => {
-        newKind.value = suggestedKinds[form.querySelector<HTMLSelectElement>('select[name="kind"]')!.value] || "Action";
-        newElementMenu.hidden = false;
-        newKind.focus();
+      const suggestions = form.querySelector<HTMLElement>("#script-suggestions")!;
+      let suggestionValues: string[] = [];
+      let activeSuggestion = 0;
+      const hideSuggestions = () => { suggestions.hidden = true; suggestionValues = []; activeSuggestion = 0; };
+      const applySuggestion = (value: string) => {
+        area.value = value;
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+        area.setSelectionRange(area.value.length, area.value.length);
+        hideSuggestions();
       };
-      form.querySelector<HTMLButtonElement>("#script-new-cancel")!.onclick = closeNewElementMenu;
-      form.querySelector<HTMLButtonElement>("#script-new-confirm")!.onclick = async () => {
+      const showSuggestions = () => {
+        const kind = form.querySelector<HTMLSelectElement>('select[name="kind"]')!.value;
+        suggestionValues = kind === "Character" ? characterSuggestions(records, area.value) : kind === "Scene Heading" ? sceneHeadingSuggestions(records, area.value) : [];
+        if (!suggestionValues.length || (suggestionValues.length === 1 && suggestionValues[0] === area.value.trim().toLocaleUpperCase())) { hideSuggestions(); return; }
+        suggestions.innerHTML = suggestionValues.map((value, index) => `<button type="button" role="option" aria-selected="${index === activeSuggestion}" data-script-suggestion="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("");
+        suggestions.hidden = false;
+        suggestions.querySelectorAll<HTMLButtonElement>("[data-script-suggestion]").forEach(button => button.onclick = () => applySuggestion(button.dataset.scriptSuggestion || ""));
+      };
+      area.addEventListener("input", showSuggestions);
+      const createNextBlock = async (kind = nextScreenplayKind(form.querySelector<HTMLSelectElement>('select[name="kind"]')!.value, !area.value.trim())) => {
         flushScreenplaySave();
-        const next = newToolRecord("Untitled element", { kind: newKind.value, text: "" });
+        const next = newToolRecord("Untitled element", { kind, text: "" });
         next.fields.order = String(records.length).padStart(6, "0");
         records.push(next);
         selected = next.id;
@@ -577,9 +616,17 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         renderEditor();
       };
       area.addEventListener("keydown", event => {
+        if (!suggestions.hidden && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+          event.preventDefault(); activeSuggestion = (activeSuggestion + (event.key === "ArrowDown" ? 1 : suggestionValues.length - 1)) % suggestionValues.length; showSuggestions(); return;
+        }
+        if (!suggestions.hidden && (event.key === "Escape" || event.key === "Enter" || event.key === "Tab")) {
+          if (event.key !== "Escape") { event.preventDefault(); applySuggestion(suggestionValues[activeSuggestion]); }
+          else hideSuggestions();
+          return;
+        }
         if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
           event.preventDefault();
-          openNewElementMenu();
+          void createNextBlock();
           return;
         }
         const atStart = area.selectionStart === 0 && area.selectionEnd === 0;
@@ -610,10 +657,15 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       };
       form.querySelector<HTMLButtonElement>("#script-comment-cancel")!.onclick = () => { composer.hidden = true; selectedPassage = null; };
       const showComments = () => {
-        const comments = JSON.parse(record.fields.comments || "[]") as TextComment[];
+        const comments = ordered().flatMap(block => (JSON.parse(block.fields.comments || "[]") as TextComment[]).map(comment => ({ ...comment, blockId: comment.blockId || block.id })));
         const target = editor.querySelector<HTMLElement>("#tool-comment-list")!;
-        target.innerHTML = comments.length ? comments.map(comment => `<article class="tool-comment ${comment.orphaned ? "orphaned" : ""}"><small>${comment.orphaned ? "Orphaned anchor" : escapeHtml(comment.quote)}</small><p>${escapeHtml(comment.body)}</p><button type="button" data-comment="${comment.id}">${comment.resolved ? "Reopen" : "Resolve"}</button></article>`).join("") : '<p class="tool-empty">No comments yet.</p>';
-        target.querySelectorAll<HTMLButtonElement>("[data-comment]").forEach(button => button.onclick = () => { const comment = comments.find(item => item.id === button.dataset.comment)!; comment.resolved = !comment.resolved; record.fields.comments = JSON.stringify(comments); persist(record); showComments(); });
+        target.innerHTML = comments.length ? comments.map(comment => `<article class="tool-comment ${comment.orphaned ? "orphaned" : ""} ${comment.resolved ? "resolved" : ""}" data-comment-thread="${escapeHtml(comment.id)}"><small>${comment.orphaned ? "Orphaned anchor" : escapeHtml(comment.quote)}</small><p>${escapeHtml(comment.body)}</p>${comment.replies?.map(reply => `<p class="tool-comment-reply">${escapeHtml(reply.body)}</p>`).join("") || ""}<button type="button" data-comment-focus="${escapeHtml(comment.id)}">Go to text</button><button type="button" data-comment="${escapeHtml(comment.id)}" data-comment-block="${escapeHtml(comment.blockId!)}">${comment.resolved ? "Reopen" : "Resolve"}</button></article>`).join("") : '<p class="tool-empty">No comments yet.</p>';
+        target.querySelectorAll<HTMLButtonElement>("[data-comment-focus]").forEach(button => button.onclick = () => { const comment = comments.find(item => item.id === button.dataset.commentFocus); if (!comment) return; selected = comment.blockId; revealSelected = true; renderList(); renderEditor(); });
+        target.querySelectorAll<HTMLButtonElement>("[data-comment]").forEach(button => button.onclick = () => {
+          const block = records.find(item => item.id === button.dataset.commentBlock); if (!block) return;
+          const blockComments = JSON.parse(block.fields.comments || "[]") as TextComment[];
+          const comment = blockComments.find(item => item.id === button.dataset.comment)!; comment.resolved = !comment.resolved; block.fields.comments = JSON.stringify(blockComments); void persist(block); showComments();
+        });
       };
       showComments();
       editor.querySelector("#tool-comment-add")?.addEventListener("click", async () => {
@@ -621,7 +673,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const body = editor.querySelector<HTMLTextAreaElement>("#tool-comment-body")!.value.trim();
         if (!body) { status.textContent = "Write a comment first."; return; }
         const comments = JSON.parse(record.fields.comments || "[]") as TextComment[];
-        comments.push({ id: crypto.randomUUID(), ...selectedPassage, body, orphaned: false, resolved: false });
+        comments.push({ id: crypto.randomUUID(), blockId: record.id, ...selectedPassage, body, orphaned: false, resolved: false, replies: [] });
         record.fields.comments = JSON.stringify(comments); await persist(record);
         editor.querySelector<HTMLTextAreaElement>("#tool-comment-body")!.value = ""; composer.hidden = true; selectedPassage = null; panel.hidden = false; toggle.setAttribute("aria-expanded", "true"); showComments();
       });
@@ -637,10 +689,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       if (!((event.ctrlKey && !event.altKey && !event.metaKey) || (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey))) return;
       const digit = event.code.match(/^Digit([0-8])$/)?.[1] ?? (/^[0-8]$/.test(event.key) ? event.key : undefined);
       if (digit === undefined) return;
-      const index = Number(digit);
-      if (index < 0 || index >= screenplayKinds.length) return;
+      const shortcutKinds: Record<string, ScreenplayKind> = { "1": "Scene Heading", "2": "Action", "3": "Character", "4": "Dialogue", "5": "Parenthetical", "6": "Transition", "7": "Shot" };
+      const kind = event.ctrlKey ? shortcutKinds[digit] : screenplayKinds[Number(digit)];
+      if (!kind) return;
       event.preventDefault(); const select = form.querySelector<HTMLSelectElement>('select[name="kind"]')!;
-      select.value = screenplayKinds[index]; select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.value = kind; select.dispatchEvent(new Event("input", { bubbles: true }));
     });
   };
   renderList(); renderEditor();
