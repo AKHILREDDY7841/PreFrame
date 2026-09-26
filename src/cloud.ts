@@ -36,6 +36,7 @@ export class CloudProjectRepository implements ProjectRepository {
     return { profile: { id: profile.id, displayName: profile.display_name || "Member", tier: profile.tier }, isAdmin: isAdmin === true };
   }
   async listProjects(): Promise<Project[]> {
+    await supabase.rpc("purge_expired_projects");
     const { data, error } = await supabase.from("projects")
       .select("id,owner_id,title,timezone,revision,updated_at,cover_path")
       .is("archived_at", null).order("updated_at", { ascending: false });
@@ -68,7 +69,23 @@ export class CloudProjectRepository implements ProjectRepository {
     return data as string;
   }
   async deleteProject(projectId: string): Promise<void> {
-    const { error } = await supabase.rpc("delete_project", { p_project: projectId });
+    const { error } = await supabase.rpc("move_project_to_recycle_bin", { p_project: projectId });
+    if (error) throw new Error(error.message);
+  }
+  async recycleBin(): Promise<(Project & { purgeAfter: string })[]> {
+    await supabase.rpc("purge_expired_projects");
+    const identity = await this.getIdentity();
+    if (!identity) return [];
+    const { data, error } = await supabase.from("projects").select("id,owner_id,title,timezone,revision,updated_at,cover_path,purge_after").eq("owner_id", identity.profile.id).not("archived_at", "is", null).order("archived_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || []).map(row => ({ ...asProject(row), purgeAfter: String(row.purge_after) }));
+  }
+  async restoreProject(projectId: string): Promise<void> {
+    const { error } = await supabase.rpc("restore_project_from_recycle_bin", { p_project: projectId });
+    if (error) throw new Error(error.message);
+  }
+  async permanentlyDeleteProject(projectId: string): Promise<void> {
+    const { error } = await supabase.rpc("permanently_delete_recycled_project", { p_project: projectId });
     if (error) throw new Error(error.message);
   }
   async withCoverUrl(project: Project): Promise<Project> {
