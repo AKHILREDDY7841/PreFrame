@@ -1,5 +1,5 @@
 /* Project workspaces: a quiet shared frame, with tool-specific working surfaces. */
-.studio-workspace{--studio-ink:#16374a;--studio-teal:#316d7c;--studio-line:#e1e8eb;--studio-muted:#758697;display:grid;grid-template-columns:minmax(0,1fr);max-width:none!important;padding:0!important;min-height:100dvh;background:#f6f8f7;color:var(--studio-ink);font-family:Arial,Helvetica,sans-serif;font-size:13px}
+.studio-workspace{--studio-ink:#16374a;--studio-teal:#316d7c;--studio-line:#e1e8eb;--studio-muted:#758697;display:block;width:100%;max-width:none!important;padding:0!important;min-height:100dvh;background:#f6f8f7;color:var(--studio-ink);font-family:Arial,Helvetica,sans-serif;font-size:13px}
 .studio-workspace *{box-sizing:border-box}
 .studio-workspace button,.studio-workspace input,.studio-workspace select,.studio-workspace textarea{font:inherit;color:inherit}
 .studio-workspace button,.studio-workspace select{cursor:pointer}
@@ -16,7 +16,7 @@
 .studio-sidebar nav a:hover,.studio-sidebar nav a[aria-current]{background:#e2ecec;color:#236174}
 .studio-nav-caption{font-size:10px;letter-spacing:.14em;color:#829197;padding:20px 13px 8px}
 .studio-nav-divider{border-top:1px solid #ccd9dc;margin:20px 12px 8px}
-.studio-main{min-width:0}
+.studio-main{width:100%;min-width:0}
 .studio-banner{position:relative;height:166px;padding:23px 30px;background:linear-gradient(90deg,#fafbf8 9%,#fafbf8ed 28%,#f7f8f6a3 50%,#f7f8f61a 82%),url('./assets/premium-banner.webp') center 47%/cover;border-bottom:1px solid var(--studio-line)}
 .studio-breadcrumb{display:flex;gap:9px;font-size:12px;align-items:center;color:#748696}
 .studio-breadcrumb a{color:#466272;text-decoration:none}
