@@ -5,6 +5,7 @@ import type { Project } from "./domain.js";
 import { deleteToolRecord, newToolRecord, saveToolRecord, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
 
 let activeToolChannel: { unsubscribe: () => unknown } | null = null;
+let activeSceneScrollCleanup: (() => void) | null = null;
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 const labels: Record<ToolName, string> = { screenplay: "Screenplay", notes: "Docs & Notes", shots: "Shot Lists", storyboards: "Storyboards", schedule: "Production Schedule", locations: "Locations", "call-sheets": "Call Sheets" };
@@ -681,6 +682,20 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         revealSelected = false;
         requestAnimationFrame(() => editor.querySelector<HTMLElement>(`[data-script-id="${CSS.escape(record.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
       }
+      const sceneIds = deriveScreenplayScenes(ordered()).map(scene => scene.id);
+      let sceneScrollFrame = 0;
+      const updateActiveScene = () => {
+        sceneScrollFrame = 0;
+        const active = sceneIds.map(id => editor.querySelector<HTMLElement>(`[data-script-id="${CSS.escape(id)}"]`)).filter((element): element is HTMLElement => Boolean(element)).filter(element => element.getBoundingClientRect().top < 220).at(-1);
+        if (!active) return;
+        list.querySelectorAll<HTMLButtonElement>(".scene-nav-item[data-select]").forEach(button => button.classList.toggle("selected", button.dataset.select === active.dataset.scriptId));
+      };
+      const scheduleSceneUpdate = () => { if (!sceneScrollFrame) sceneScrollFrame = requestAnimationFrame(updateActiveScene); };
+      activeSceneScrollCleanup?.();
+      window.addEventListener("scroll", scheduleSceneUpdate, { passive: true });
+      editor.addEventListener("scroll", scheduleSceneUpdate, { passive: true });
+      activeSceneScrollCleanup = () => { window.removeEventListener("scroll", scheduleSceneUpdate); editor.removeEventListener("scroll", scheduleSceneUpdate); if (sceneScrollFrame) cancelAnimationFrame(sceneScrollFrame); };
+      updateActiveScene();
     }
     if (tool === "screenplay") form.addEventListener("keydown", event => {
       if (event.key === "Tab" && event.target instanceof HTMLTextAreaElement && event.target.name === "text" && !event.ctrlKey && !event.altKey && !event.metaKey) {
