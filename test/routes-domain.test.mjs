@@ -7,6 +7,7 @@ test("recognizes each supported route layer", () => {
   assert.equal(parseRoute("/").page, "landing");
   assert.equal(parseRoute("/auth").page, "auth");
   assert.equal(parseRoute("/app").page, "home");
+  assert.equal(parseRoute("/app/import").page, "import");
   assert.deepEqual(parseRoute(`/app/projects/${sampleProject.id}/shots`), { page: "workspace", projectId: sampleProject.id, tool: "shots" });
   assert.equal(parseRoute("/unknown").page, "not-found");
 });

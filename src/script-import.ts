@@ -17,7 +17,7 @@ export function classifyScreenplayLines(lines: string[]): ImportedScreenplayElem
   let dialogueFollows = false;
   for (const original of lines) {
     const indent = original.length - original.trimStart().length;
-    const text = original.replace(/\s+/g, " ").trim();
+    const text = original.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim();
     if (!text || pageNumber.test(text) || /^(?:copyright|contact info|created using celtx)$/i.test(text)) continue;
     let kind: ImportedScreenplayElement["kind"];
     if (/^ACT\s+(?:[IVX]+|\d+)$/i.test(text)) kind = "Act";
