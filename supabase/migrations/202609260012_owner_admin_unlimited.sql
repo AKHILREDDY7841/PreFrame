@@ -15,7 +15,7 @@ begin
 end $$;
 
 create or replace function public.invite_editor(p_project uuid, p_email text)
-returns void language plpgsql security definer set search_path = '' as $$
+returns uuid language plpgsql security definer set search_path = '' as $$
 begin
   if auth.uid() is null or not public.is_owner(p_project) then raise exception 'Only the project owner can invite editors'; end if;
   if p_email is null or length(trim(p_email)) > 320 or position('@' in p_email) < 2 then raise exception 'invalid email'; end if;
@@ -24,6 +24,7 @@ begin
   insert into public.project_invitations(project_id,invitee_email,role,invited_by,accepted_at,revoked_at)
     values(p_project,lower(trim(p_email)),'editor',auth.uid(),null,null)
     on conflict(project_id,invitee_email) do update set invited_by=excluded.invited_by,accepted_at=null,revoked_at=null;
+  return null;
 end $$;
 
 create or replace function public.accept_invitation(p_invite uuid)
