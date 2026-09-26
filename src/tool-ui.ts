@@ -660,12 +660,21 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const showComments = () => {
         const comments = ordered().flatMap(block => (JSON.parse(block.fields.comments || "[]") as TextComment[]).map(comment => ({ ...comment, blockId: comment.blockId || block.id })));
         const target = editor.querySelector<HTMLElement>("#tool-comment-list")!;
-        target.innerHTML = comments.length ? comments.map(comment => `<article class="tool-comment ${comment.orphaned ? "orphaned" : ""} ${comment.resolved ? "resolved" : ""}" data-comment-thread="${escapeHtml(comment.id)}"><small>${comment.orphaned ? "Orphaned anchor" : escapeHtml(comment.quote)}</small><p>${escapeHtml(comment.body)}</p>${comment.replies?.map(reply => `<p class="tool-comment-reply">${escapeHtml(reply.body)}</p>`).join("") || ""}<button type="button" data-comment-focus="${escapeHtml(comment.id)}">Go to text</button><button type="button" data-comment="${escapeHtml(comment.id)}" data-comment-block="${escapeHtml(comment.blockId!)}">${comment.resolved ? "Reopen" : "Resolve"}</button></article>`).join("") : '<p class="tool-empty">No comments yet.</p>';
+        target.innerHTML = comments.length ? comments.map(comment => `<article class="tool-comment ${comment.orphaned ? "orphaned" : ""} ${comment.resolved ? "resolved" : ""}" data-comment-thread="${escapeHtml(comment.id)}"><small>${comment.orphaned ? "Orphaned anchor" : escapeHtml(comment.quote)}</small><p>${escapeHtml(comment.body)}</p>${comment.replies?.map(reply => `<p class="tool-comment-reply">${escapeHtml(reply.body)}</p>`).join("") || ""}${comment.resolved ? "" : `<label class="tool-comment-reply-form"><span class="sr-only">Reply</span><input data-comment-reply-input="${escapeHtml(comment.id)}" placeholder="Reply…"><button type="button" data-comment-reply="${escapeHtml(comment.id)}" data-comment-block="${escapeHtml(comment.blockId!)}">Reply</button></label>`}<button type="button" data-comment-focus="${escapeHtml(comment.id)}">Go to text</button><button type="button" data-comment="${escapeHtml(comment.id)}" data-comment-block="${escapeHtml(comment.blockId!)}">${comment.resolved ? "Reopen" : "Resolve"}</button></article>`).join("") : '<p class="tool-empty">No comments yet.</p>';
         target.querySelectorAll<HTMLButtonElement>("[data-comment-focus]").forEach(button => button.onclick = () => { const comment = comments.find(item => item.id === button.dataset.commentFocus); if (!comment) return; selected = comment.blockId; revealSelected = true; renderList(); renderEditor(); });
         target.querySelectorAll<HTMLButtonElement>("[data-comment]").forEach(button => button.onclick = () => {
           const block = records.find(item => item.id === button.dataset.commentBlock); if (!block) return;
           const blockComments = JSON.parse(block.fields.comments || "[]") as TextComment[];
           const comment = blockComments.find(item => item.id === button.dataset.comment)!; comment.resolved = !comment.resolved; block.fields.comments = JSON.stringify(blockComments); void persist(block); showComments();
+        });
+        target.querySelectorAll<HTMLButtonElement>("[data-comment-reply]").forEach(button => button.onclick = () => {
+          const input = target.querySelector<HTMLInputElement>(`[data-comment-reply-input="${CSS.escape(button.dataset.commentReply || "")}"]`);
+          const body = input?.value.trim(); const block = records.find(item => item.id === button.dataset.commentBlock);
+          if (!body || !block) return;
+          const blockComments = JSON.parse(block.fields.comments || "[]") as TextComment[];
+          const comment = blockComments.find(item => item.id === button.dataset.commentReply)!;
+          comment.replies = [...(comment.replies || []), { id: crypto.randomUUID(), body, createdAt: new Date().toISOString() }];
+          block.fields.comments = JSON.stringify(blockComments); void persist(block); showComments();
         });
       };
       showComments();
