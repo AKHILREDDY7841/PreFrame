@@ -9,7 +9,8 @@
 .studio-workspace svg{width:21px;height:21px;flex:none}
 .studio-sidebar{z-index:20;width:240px;background:linear-gradient(100deg,#f1f5f3,#fafbf9);border-right:1px solid var(--studio-line);padding:27px 12px;position:fixed;left:0;top:0;height:100dvh;overflow:auto;transform:translateX(-102%);transition:transform .22s ease;box-shadow:12px 0 30px #17384718}
 .studio-sidebar-open .studio-sidebar{transform:translateX(0)}
-.studio-sidebar-toggle{position:sticky;z-index:8;top:10px;float:left;margin:10px 0 0 14px;padding:7px 10px!important;border:1px solid var(--studio-line)!important;border-radius:5px;background:#fffffff0!important;color:#315f72!important;font-size:11px!important;box-shadow:0 2px 8px #17384714}
+.studio-sidebar-toggle{position:sticky;z-index:21;top:10px;float:left;margin:10px 0 0 14px;padding:7px 10px!important;border:1px solid var(--studio-line)!important;border-radius:5px;background:#fffffff0!important;color:#315f72!important;font-size:11px!important;box-shadow:0 2px 8px #17384714}
+.studio-sidebar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.studio-sidebar-head .studio-brand{margin:2px 12px 35px}.studio-sidebar-head button{display:grid;place-items:center;width:32px;height:32px;border:1px solid #c9d9dd;background:#fff;color:#274e5f;font-size:22px;line-height:1;cursor:pointer}
 .studio-brand{display:block;margin:2px 12px 35px;color:#122d41;text-decoration:none;letter-spacing:.29em;font-weight:700;font-size:17px}
 .studio-sidebar nav{display:flex;flex-direction:column;gap:6px}
 .studio-sidebar nav a{display:flex;gap:13px;align-items:center;min-height:42px;padding:10px 13px;border-radius:5px;text-decoration:none;color:#4b6574}

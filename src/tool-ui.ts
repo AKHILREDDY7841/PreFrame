@@ -115,6 +115,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   };
   setSidebar(localStorage.getItem(sidebarKey) === "true");
   sidebarToggle?.addEventListener("click", () => setSidebar(!workspace.classList.contains("studio-sidebar-open")));
+  workspace.querySelector<HTMLButtonElement>("#studio-sidebar-close")?.addEventListener("click", () => setSidebar(false));
   workspace.querySelectorAll<HTMLAnchorElement>(".studio-sidebar a[data-route]").forEach(link => link.addEventListener("click", () => setSidebar(false)));
   const isCurrent = () => document.querySelector<HTMLElement>(".tool-page")?.dataset.project === project.id && document.querySelector<HTMLElement>(".tool-page")?.dataset.tool === name;
   let records = await toolRecords(userId, project.id, tool);
