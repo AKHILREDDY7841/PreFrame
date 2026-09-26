@@ -10,7 +10,7 @@ import { renderHomePage } from "./home-content.js";
 import { mountToolWorkspace, toolWorkspace } from "./tool-ui.js";
 import { clearToolData, exportToolData, newToolRecord, restoreToolData, saveToolRecord, toolRecords, type ToolName } from "./tool-data.js";
 import { classifyScreenplayLines } from "./script-import.js";
-const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; let currentUserId = ""; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
+const localRepo = new LocalProjectRepository(); const cloudRepo = new CloudProjectRepository(); let repo: LocalProjectRepository | CloudProjectRepository = cloudRepo; let preview = false; let errorMessage = ""; let accountBadge = "Free"; let currentUserId = ""; let adminMetricsTimer: ReturnType<typeof setInterval> | undefined; const root = document.querySelector<HTMLElement>("#app")!; const base = location.pathname.startsWith("/PreFrame") ? "/PreFrame" : ""; const href = (path: string) => `${base}${path}`;
 const tools = [["Write","Screenplay","screenplay"],["Write","Docs & Notes","notes"],["Visualize","Shot Lists","shots"],["Visualize","Storyboards","storyboards"],["Plan","Production Schedule","schedule"],["Plan","Calendar","calendar"],["Plan","Call Sheets","call-sheets"],["Plan","Locations","locations"]];
 const toolDescriptions: Record<string,string> = {
   screenplay:"Shape scenes and dialogue, and leave comments on selected text.",
@@ -76,6 +76,40 @@ function wireLandingMotion(){
   },{threshold:.12,rootMargin:"0px 0px -35px 0px"});
   reveals.forEach(element=>landingObserver?.observe(element));
   document.body.classList.add("motion-ready");
+}
+function formatStorage(bytes: unknown) {
+  const value = typeof bytes === "number" ? bytes : Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return "Unavailable";
+  if (value < 1024) return `${Math.round(value)} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  return `${(value / 1024 ** 3).toFixed(2)} GB`;
+}
+function setAdminMetric(selector: string, value: string) {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (element) element.textContent = value;
+}
+async function refreshAdminMetrics() {
+  if (!document.querySelector("[data-admin-storage]") || !currentUserId || accountBadge !== "Admin") return;
+  const { error: presenceError } = await supabase.rpc("record_workspace_presence");
+  const { data, error } = await supabase.rpc("admin_workspace_metrics");
+  const metric = Array.isArray(data) ? data[0] : data;
+  if (presenceError || error || !metric) {
+    setAdminMetric("[data-admin-storage]", "Unavailable");
+    setAdminMetric("[data-admin-active]", "Unavailable");
+    setAdminMetric("[data-admin-registered]", "Unavailable");
+    return;
+  }
+  setAdminMetric("[data-admin-storage]", formatStorage(metric.storage_bytes));
+  setAdminMetric("[data-admin-active]", String(metric.active_users ?? 0));
+  setAdminMetric("[data-admin-registered]", String(metric.registered_users ?? 0));
+}
+function wireAdminMetrics() {
+  if (adminMetricsTimer) clearInterval(adminMetricsTimer);
+  adminMetricsTimer = undefined;
+  if (!document.querySelector("[data-admin-storage]") || !currentUserId || accountBadge !== "Admin") return;
+  void refreshAdminMetrics();
+  adminMetricsTimer = setInterval(() => void refreshAdminMetrics(), 60_000);
 }
 async function render(){
   const query=new URLSearchParams(location.search);
@@ -151,6 +185,7 @@ async function render(){
   if(document.querySelector("#invitations-list"))loadInvitations();
   if(document.querySelector("#recycle-list"))loadRecycleBin();
   if(r.page==="landing")wireLandingMotion();
+  wireAdminMetrics();
   if(r.page==="landing"&&["#features","#pricing","#about"].includes(location.hash)){
     document.querySelector(location.hash)?.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
   }

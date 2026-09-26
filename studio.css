@@ -198,6 +198,14 @@
 @media(max-width:600px){.studio-schedule-filters{flex-wrap:wrap}.studio-schedule-filters input{width:100%}}
 .eye-saver .studio-workspace[data-tool=notes] .studio-note-paper,.eye-saver .studio-workspace[data-tool=notes] .studio-rich-note,.eye-saver .studio-workspace[data-tool=notes] .tool-title-label input{background:#fbf2de}
 .eye-saver .studio-workspace[data-tool=screenplay] .script-page{background:#fbf2de}
+
+/* The writing desk is deliberately wider than the printed screenplay sheet. Print
+   dimensions live in styles.css inside @media print; they must not constrain editing. */
+.studio-workspace[data-tool=screenplay] .script-layout{display:block!important;padding:clamp(24px,3vw,48px) clamp(24px,7vw,140px) 64px!important}
+.studio-workspace[data-tool=screenplay] .script-pages{display:block!important;width:min(100%,1120px)!important;margin:0 auto!important}
+.studio-workspace[data-tool=screenplay] .script-page{box-sizing:border-box;display:block;width:100%!important;max-width:none!important;min-width:0!important;min-height:clamp(720px,78vh,980px)!important;margin:0!important;padding:clamp(36px,4vw,68px) clamp(44px,7vw,112px)!important;flex:none!important}
+.studio-workspace[data-tool=screenplay] .script-page+.script-page{margin-top:28px!important}
+.studio-workspace[data-tool=screenplay] .script-page-content{max-width:780px;margin:0 auto}
 .eye-saver .studio-workspace #eye[aria-pressed=true]{background:#f2e5c7;border-color:#cdb77c}
 /* A viewport-sized dashboard with scrolling confined to long lists. */
 .collection-main{min-width:0}.collection-heading{padding:35px 35px 25px;background:linear-gradient(90deg,#fafcf9,#eef3ef)}.collection-heading h1{font:42px Georgia,serif;margin:8px 0}.collection-heading>p:last-child{color:#66808b}.collection-content{padding:25px 35px}.collection-content .home-project-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.collection-content .home-project-image{height:150px}.collection-content .home-project-card{display:flex;flex-direction:column}
