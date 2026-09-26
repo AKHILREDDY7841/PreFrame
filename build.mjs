@@ -9,11 +9,16 @@ const publicConfig = {
   publishableKey: process.env.PREFRAME_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_kSXrGkTqoCj2G6GX0__YMA_I1HmXTwf",
 };
 const configScript = `<script>window.__PREFRAME_PUBLIC_CONFIG__=${JSON.stringify(publicConfig).replaceAll("<", "\\u003c")}</script>`;
+// GitHub Pages serves static assets through a CDN. Version every generated
+// asset reference so a visitor never receives a previous app bundle after a
+// successful deployment.
+const assetVersion = Date.now().toString(36);
 const html = (await readFile("index.html", "utf8"))
   .replace("<head>", `<head><script>const preframeBase=document.createElement('base');preframeBase.href=location.pathname.startsWith('/PreFrame')?'/PreFrame/':'/';document.head.append(preframeBase)</script>`)
   .replace("</head>", `${configScript}</head>`)
-  .replace('href="/styles.css"', 'href="./styles.css"')
-  .replace("/dist/app.js", "./app.js");
+  .replace('href="/styles.css"', `href="./styles.css?v=${assetVersion}"`)
+  .replace('href="/studio.css"', `href="./studio.css?v=${assetVersion}"`)
+  .replace("/dist/app.js", `./app.js?v=${assetVersion}`);
 await writeFile("site/index.html", html);
 await cp("styles.css", "site/styles.css");
 await cp("studio.css", "site/studio.css");
