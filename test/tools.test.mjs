@@ -1,11 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { daypartGreeting } from "../dist/home-content.js";
-import { localDateISO, remapTextComment, scheduleProgress, screenplayKinds } from "../dist/tool-ui.js";
+import { localDateISO, remapTextComment, scheduleProgress, screenplayKinds, toolWorkspace } from "../dist/tool-ui.js";
+import { studioDocument } from "../dist/studio-documents.js";
 import { classifyScreenplayLines } from "../dist/script-import.js";
 
 test("screenplay shortcuts follow the specified nine-element order", () => {
   assert.deepEqual(screenplayKinds, ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"]);
+});
+
+test("document properties and screenplay Add element control are absent", () => {
+  const record = { id: "note", title: "Untitled document", fields: { body: "Draft", folder: "Old folder", tags: "Old tag" }, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+  const document = studioDocument("notes", record, "Project");
+  assert.doesNotMatch(document, /name="(?:folder|tags)"/);
+  assert.match(document, /name="body"/);
+  const workspace = toolWorkspace({ id: "project", title: "Project" }, "screenplay", path => path);
+  assert.doesNotMatch(workspace, /id="tool-add"/);
 });
 
 test("new schedule dates follow the user's local calendar day", () => {

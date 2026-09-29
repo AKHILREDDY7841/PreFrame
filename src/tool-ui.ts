@@ -206,7 +206,7 @@ export function toolWorkspace(project: Project, name: string, href: (path: strin
   const label = name === "calendar" ? "Calendar" : labels[tool];
   const write = tool === "screenplay" || tool === "notes";
   const title = tool === "screenplay" ? `<span>Screenplay</span><small>${escapeHtml(project.title)}</small>` : `<span>${label}</span><small>${escapeHtml(project.title)}</small>`;
-  const content = `<div class="studio-toolbar"><h2 class="studio-tool-title">${title}</h2><div class="studio-toolbar-actions">${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}${tool === "schedule" ? '<button id="schedule-columns" type="button" aria-label="Choose production schedule columns">☷ Columns</button>' : ""}${["schedule", "shots", "storyboards"].includes(tool) ? '<button id="studio-print" type="button">Print / PDF</button>' : ""}<button id="studio-export" type="button">Export CSV</button><button id="tool-add" class="button" type="button">＋ ${tool === "screenplay" ? "Add element" : tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add shoot day" : tool === "locations" ? "Add location" : "New call sheet"}</button></div></div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article>`;
+  const content = `<div class="studio-toolbar"><h2 class="studio-tool-title">${title}</h2><div class="studio-toolbar-actions">${write ? '<button id="eye" type="button" aria-pressed="false">Eye saver</button>' : ""}${tool === "schedule" ? '<button id="schedule-columns" type="button" aria-label="Choose production schedule columns">☷ Columns</button>' : ""}${["schedule", "shots", "storyboards"].includes(tool) ? '<button id="studio-print" type="button">Print / PDF</button>' : ""}<button id="studio-export" type="button">Export CSV</button>${tool === "screenplay" ? "" : `<button id="tool-add" class="button" type="button">＋ ${tool === "notes" ? "New document" : tool === "shots" ? "Add shot" : tool === "storyboards" ? "Add frame" : tool === "schedule" ? "Add shoot day" : tool === "locations" ? "Add location" : "New call sheet"}</button>`}</div></div><p class="tool-save-status" id="tool-status" role="status">Loading…</p><div class="tool-body"><aside class="tool-list" id="tool-list" aria-label="${label} items"></aside><section class="tool-editor" id="tool-editor" aria-label="Editor"></section></div><article id="tool-print-document" aria-hidden="true"></article>`;
   return studioShell(project.id, project.title, name, label, content, href);
 }
 
@@ -264,6 +264,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let saveQueue = Promise.resolve();
   let screenplaySaveTimer: ReturnType<typeof setTimeout> | undefined;
   let flushScreenplaySave = () => {};
+  let noteSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let flushNoteSave = () => {};
   let contextMode: "find" | "title" | "history" | "drafts" | "revision" | "read" | "breakdown" | null = null;
   let findQuery = "";
   let findReplacement = "";
@@ -342,7 +344,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   });
   document.querySelector("#studio-export")?.addEventListener("click", () => {
     const columns = [{ key: "title", label: "Title" }, ...fields[tool]];
-    for (const key of new Set(records.flatMap(item => Object.keys(item.fields)))) if (!columns.some(column => column.key === key) && !["order", "richBody"].includes(key)) columns.push({ key, label: key });
+    for (const key of new Set(records.flatMap(item => Object.keys(item.fields)))) if (!columns.some(column => column.key === key) && !["order", "richBody", ...(tool === "notes" ? ["folder", "tags"] : [])].includes(key)) columns.push({ key, label: key });
     const csv = (value: string) => '"' + (/^[=+@\-]/.test(value) ? "'" : "") + value.replaceAll('"', '""') + '"';
     const output = [columns.map(c => csv(c.label)).join(","), ...ordered().map(item => columns.map(c => csv(c.key === "title" ? item.title : item.fields[c.key] || "")).join(","))].join("\r\n");
     const url = URL.createObjectURL(new Blob(["\ufeff", output], { type: "text/csv;charset=utf-8" }));
@@ -363,7 +365,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const elementIndex = items.length ? items.map((record, index) => `<button type="button" class="tool-list-item ${record.id === selected ? "selected" : ""}" data-select="${escapeHtml(record.id)}"><small>${index + 1 < 10 ? `0${index + 1}` : index + 1}${tool === "screenplay" ? ` · ${escapeHtml(record.fields.kind || "Action")}` : ""}</small><strong>${escapeHtml(record.title || "Untitled")}</strong></button>`).join("") : '<p class="tool-empty">Nothing here yet. Create the first item.</p>';
       list.innerHTML = tool === "screenplay" ? `${sceneNav}<details class="script-element-index"><summary>All elements <span>${items.length}</span></summary>${elementIndex}</details>` : `<h2>Items <span>${items.length}</span></h2>${elementIndex}`;
     }
-    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); });
+    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { if (tool === "notes") flushNoteSave(); selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); });
     list.querySelector<HTMLButtonElement>("#script-navigator-close")?.addEventListener("click", () => setSceneNavigator(false));
     list.querySelector<HTMLInputElement>("#scene-nav-search")?.addEventListener("input", event => {
       const query = (event.currentTarget as HTMLInputElement).value.trim().toLocaleLowerCase();
@@ -598,7 +600,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>1</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
-      editor.querySelector("#script-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
+      editor.querySelector("#script-start")?.addEventListener("click", () => { void addItem(); });
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
       wireScheduleBoard();
@@ -769,6 +771,15 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       setSceneNavigator(localStorage.getItem(sceneNavigatorKey) !== "false");
     }
     if (tool === "notes") mountNoteEditor(form, record.fields.richBody);
+    if (tool === "notes") {
+      flushNoteSave = () => {
+        if (!noteSaveTimer) return;
+        clearTimeout(noteSaveTimer);
+        noteSaveTimer = undefined;
+        renderList();
+        void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; });
+      };
+    }
     if (tool === "shots") form.querySelectorAll<HTMLSelectElement>("[data-shot-choice]").forEach(choice => choice.addEventListener("change", () => {
       const key = choice.dataset.shotChoice!;
       const input = form.querySelector<HTMLInputElement>(`input[name="${key}"]`)!;
@@ -811,6 +822,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
           renderList();
           void persist(record).then(savePendingBreakdownTags).catch(error => { status.textContent = `Save failed: ${error.message}`; });
         }, 550);
+        status.textContent = "Saving…";
+        return;
+      }
+      if (tool === "notes") {
+        if (noteSaveTimer) clearTimeout(noteSaveTimer);
+        noteSaveTimer = setTimeout(flushNoteSave, 550);
         status.textContent = "Saving…";
         return;
       }
@@ -1127,6 +1144,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const changedRecord = payload.new as { id?: string; revision?: number } | undefined;
         if (changedRecord?.id && (pendingRecordIds.has(changedRecord.id) || (changedRecord.revision || 0) <= (savedRevisions.get(changedRecord.id) || 0))) return;
         if (tool === "screenplay" && screenplaySaveTimer) { status.textContent = "A collaborator edited this project. Your current text remains in place until it saves."; return; }
+        if (tool === "notes" && (noteSaveTimer || editor.contains(document.activeElement))) { status.textContent = "A collaborator edited this project. Your open document stays in place; reopen it to refresh."; return; }
         const refreshed = await toolRecords(userId, project.id, tool);
         supportRecords = tool === "screenplay" ? refreshed.filter(item => item.fields.kind?.startsWith("__")) : [];
         records = tool === "screenplay" ? refreshed.filter(item => !item.fields.kind?.startsWith("__")) : refreshed;
@@ -1142,16 +1160,13 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     renderEditor();
     requestAnimationFrame(() => editor.querySelector<HTMLElement>(".schedule-field-chooser")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
-  document.querySelector("#tool-add")?.addEventListener("click", async () => {
+  const addItem = async () => {
     if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
     const prior = records.find(item => item.id === selected);
     const nextKind = records.length === 0 ? "Scene Heading" : prior?.fields.kind === "Character" ? "Dialogue" : "Action";
     const nextDay = String(Math.max(0, ...records.map(item => Number(item.fields.day) || 0)) + 1);
     const defaults: Record<string, string> = tool === "screenplay" ? { kind: nextKind, text: "" } : tool === "schedule" ? { day: nextDay, date: localDateISO(new Date()), priority: "Medium", status: "Not Started", postStatus: "Pending" } : tool === "shots" || tool === "storyboards" ? { sceneId: activeScene === "all" ? "" : activeScene } : {};
-    const documentName = tool === "notes" ? prompt("Name your new document") : null;
-    if (tool === "notes" && documentName === null) return;
-    if (tool === "notes" && !documentName?.trim()) { status.textContent = "Enter a document name to begin."; return; }
-    const title = tool === "screenplay" ? "Untitled element" : tool === "notes" ? documentName!.trim() : tool === "shots" ? "New shot" : tool === "storyboards" ? "New frame" : tool === "schedule" ? "New schedule item" : tool === "locations" ? "New location" : "Call sheet draft";
+    const title = tool === "screenplay" ? "Untitled element" : tool === "notes" ? "Untitled document" : tool === "shots" ? "New shot" : tool === "storyboards" ? "New frame" : tool === "schedule" ? "New schedule item" : tool === "locations" ? "New location" : "Call sheet draft";
     const record = newToolRecord(title, defaults);
     if (tool === "screenplay") {
       const items = ordered();
@@ -1171,9 +1186,10 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     if (tool === "screenplay") { renderList(); renderEditor(); void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; }); }
     else { await persist(record); renderList(); renderEditor(); }
     if (tool === "screenplay") editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus();
-    else if (tool === "notes") editor.querySelector<HTMLElement>('.ProseMirror')?.focus();
+    else if (tool === "notes") { const titleInput = editor.querySelector<HTMLInputElement>('input[name="title"]'); titleInput?.focus(); titleInput?.select(); }
     else if (tool === "schedule") editor.querySelector<HTMLInputElement>(`[data-schedule-cell="day"][data-record-id="${record.id}"]`)?.focus();
     else if (tool === "shots" || tool === "storyboards") editor.querySelector<HTMLInputElement>(`[data-visual-field="title"][data-record-id="${record.id}"]`)?.focus();
     else editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
-  });
+  };
+  document.querySelector("#tool-add")?.addEventListener("click", () => { void addItem(); });
 }

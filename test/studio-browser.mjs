@@ -54,7 +54,7 @@ try {
   await page.locator('.studio-frame-inspector [data-visual-field=description]').fill('Inspector update');
   assert.equal(await page.locator('.storyboard-card [data-visual-field=description]').first().inputValue(),'Inspector update');
   await page.locator('[data-board-view=list]').click();assert.equal(await page.locator('.studio-board-list').count(),1);
-  await route('notes');await page.locator('.ProseMirror').fill('Saved notes');await page.locator('[name=tags]').fill('Tone');await page.waitForTimeout(300);await page.reload();
+  await route('notes');await page.locator('.ProseMirror').fill('Saved notes');assert.equal(await page.locator('[name=folder],[name=tags]').count(),0);await page.waitForTimeout(650);await page.reload();
   await page.locator('.ProseMirror').waitFor();assert.equal(await page.locator('[name=body]').inputValue(),'Saved notes');
   await route('locations');assert.match(await page.getByText('View on Maps').getAttribute('href'),/^https:\/\/www.google.com\/maps/);
   await route('call-sheets');await page.locator('#studio-duplicate').click();await page.locator('[name=title]').filter({visible:true}).waitFor();
