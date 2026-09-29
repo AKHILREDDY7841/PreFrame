@@ -216,6 +216,7 @@
 .studio-workspace[data-tool=screenplay] .script-block-active textarea:focus{border:0!important;background:transparent!important;box-shadow:none!important}
 .studio-workspace[data-tool=screenplay] .script-scene-heading{margin-top:16px;font-weight:700;text-transform:uppercase}
 .studio-workspace[data-tool=screenplay] .script-scene-heading .script-block-text,.studio-workspace[data-tool=screenplay] .script-scene-heading textarea{background:linear-gradient(#c8c8c8,#c8c8c8) left center/100% 1.05em no-repeat!important;font-weight:700!important;text-transform:uppercase}
+.studio-workspace[data-tool=screenplay] .script-scene-heading textarea:placeholder-shown{background:transparent!important}
 .studio-workspace[data-tool=screenplay] .script-scene-number{position:absolute;left:-56px;top:0;width:40px;color:#111;font:700 16px/1.05 "Courier New",Courier,monospace;text-align:left}
 .studio-workspace[data-tool=screenplay] .script-block-preview{white-space:pre-wrap}
 .studio-workspace[data-tool=screenplay] .script-block-preview .script-block-text{display:block}
