@@ -556,6 +556,9 @@
 @page{size:Letter;margin:1in 1in .9in 1.5in}
 @media print{
   #tool-print-document{font:12pt/1.5 "Courier New",Courier,monospace!important;color:#000!important}
+  #tool-print-document .script-title-page{position:relative;min-height:8.7in;break-after:page;text-align:center}
+  #tool-print-document .script-title-page h1{margin:2.8in 0 22pt!important;text-align:center!important;font:700 12pt/1.5 "Courier New",Courier,monospace!important;letter-spacing:0}
+  #tool-print-document .script-title-page>div{position:absolute;right:0;bottom:.2in;text-align:right;white-space:pre-line}
   #tool-print-document h1{margin:0 0 34pt!important;text-align:left!important;font:10pt/1.2 "Courier New",Courier,monospace!important;text-transform:uppercase;letter-spacing:.04em}
   #tool-print-document .script-print-scene-heading{margin-top:24pt!important;font-weight:700;text-transform:uppercase}
   #tool-print-document .script-print-action,#tool-print-document .script-print-text{max-width:6in}
