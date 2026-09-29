@@ -4,6 +4,15 @@ import { daypartGreeting } from "../dist/home-content.js";
 import { localDateISO, remapTextComment, scheduleProgress, screenplayKinds, toolWorkspace } from "../dist/tool-ui.js";
 import { studioDocument } from "../dist/studio-documents.js";
 import { classifyScreenplayLines } from "../dist/script-import.js";
+import { landingDetails } from "../dist/landing-content.js";
+
+test("Premium pricing shows one monthly and one yearly rate without expired offers", () => {
+  const pricing = landingDetails("/auth");
+  assert.match(pricing, /₹49\s*<small>\/ month<\/small>/);
+  assert.match(pricing, /₹499\s*<small>\/ year<\/small>/);
+  assert.doesNotMatch(pricing, /₹149|₹199|₹999|₹1,199|₹1,499|launch-period offer/i);
+  assert.match(pricing, /Premium checkout is not available yet/);
+});
 
 test("screenplay shortcuts follow the specified nine-element order", () => {
   assert.deepEqual(screenplayKinds, ["Act", "Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text"]);
