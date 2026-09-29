@@ -6,6 +6,7 @@ import { deleteToolRecord, newToolRecord, saveToolRecord, storeToolImage, toolRe
 
 let activeToolChannel: { unsubscribe: () => unknown } | null = null;
 let activeSceneScrollCleanup: (() => void) | null = null;
+let activePageResizeCleanup: (() => void) | null = null;
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 const labels: Record<ToolName, string> = { screenplay: "Screenplay", notes: "Docs & Notes", shots: "Shot Lists", storyboards: "Storyboards", schedule: "Production Schedule", locations: "Locations", "call-sheets": "Call Sheets" };
@@ -112,23 +113,60 @@ const toolNavigation = (projectId: string, href: (path: string) => string) =>
   `<nav class="tool-nav" aria-label="Project tools">${(["screenplay", "notes", "shots", "storyboards", "schedule", "calendar", "call-sheets", "locations"] as const).map(tool => `<a href="${href(`/app/projects/${projectId}/${tool}`)}" data-route data-tool-nav="${tool}">${tool === "call-sheets" ? "Call sheets" : tool[0].toUpperCase() + tool.slice(1)}</a>`).join("")}</nav>`;
 
 function screenplayEditorMarkup(project: Project, selected: ToolRecord, items: ToolRecord[]): string {
+  let sceneNumber = 0;
   const element = (item: ToolRecord) => {
     const kind = screenplayKinds.includes(item.fields.kind as typeof screenplayKinds[number]) ? item.fields.kind : "Text";
     const kindClass = kind.toLowerCase().replaceAll(" ", "-");
-    if (item.id !== selected.id) return `<button type="button" class="script-block script-block-preview script-${kindClass}" data-script-id="${escapeHtml(item.id)}" data-script-select="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(kind)} element">${escapeHtml(item.fields.text || " ")}</button>`;
-    return `<div class="script-block script-block-active script-${kindClass} ${item.fields.comments && item.fields.comments !== "[]" ? "script-block-commented" : ""}" data-script-id="${escapeHtml(item.id)}"><span class="script-block-kind">${escapeHtml(kind)}</span><textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(2, Math.min(12, (item.fields.text || "").split("\n").length + 1))}" spellcheck="true">${escapeHtml(item.fields.text || "")}</textarea><div class="script-suggestions" id="script-suggestions" role="listbox" hidden></div><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
+    const number = kind === "Scene Heading" ? `<span class="script-scene-number" aria-label="Scene ${++sceneNumber}">${sceneNumber}</span>` : "";
+    if (item.id !== selected.id) return `<button type="button" class="script-block script-block-preview script-${kindClass}" data-script-id="${escapeHtml(item.id)}" data-script-select="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(kind)} element">${number}<span class="script-block-text">${escapeHtml(item.fields.text || " ")}</span></button>`;
+    return `<div class="script-block script-block-active script-${kindClass} ${item.fields.comments && item.fields.comments !== "[]" ? "script-block-commented" : ""}" data-script-id="${escapeHtml(item.id)}">${number}<textarea name="text" aria-label="Script text" dir="auto" rows="${Math.max(1, Math.min(12, (item.fields.text || "").split("\n").length))}" spellcheck="${kind === "Character" || kind === "Scene Heading" ? "false" : "true"}">${escapeHtml(item.fields.text || "")}</textarea><div class="script-suggestions" id="script-suggestions" role="listbox" hidden></div><button type="button" class="script-selection-action" id="script-comment-open" aria-label="Add comment to selected text" hidden>Add comment</button></div>`;
   };
-  const pages: ToolRecord[][] = [];
-  let page: ToolRecord[] = [];
-  let pageWeight = 0;
-  for (const item of items) {
-    const weight = Math.max(1, Math.ceil((item.fields.text || "").length / 700));
-    if (page.length && pageWeight + weight > 14) { pages.push(page); page = []; pageWeight = 0; }
-    page.push(item); pageWeight += weight;
+  const pageMarkup = `<article class="script-page" aria-label="Screenplay page 1"><div class="script-page-header"><span>1</span></div><div class="script-page-content">${items.map(element).join("")}</div></article>`;
+  return `<form id="tool-form" class="script-editor-form"><div class="script-toolbar"><div class="script-toolbar-main"><label class="script-kind-label">Element <select name="kind">${screenplayKinds.map((kind, index) => `<option value="${escapeHtml(kind)}" ${selected.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)} — Ctrl+${index}</option>`).join("")}</select></label><span class="script-shortcuts">Tab changes element · Ctrl+1–7 formats the current block</span></div><div class="script-toolbar-actions"><button type="button" id="script-navigator-toggle" aria-expanded="false" aria-controls="tool-list">Scenes</button><button type="button" id="tool-up" aria-label="Move element up">↑</button><button type="button" id="tool-down" aria-label="Move element down">↓</button><button type="button" id="script-comments-toggle" aria-expanded="false" aria-controls="script-comments-panel">Comments</button><button type="button" id="tool-print">Export PDF</button></div></div><input type="hidden" name="title" value="${escapeHtml(selected.title)}"><div class="script-layout"><div class="script-pages">${pageMarkup}</div><aside class="tool-comments script-comments" id="script-comments-panel" aria-label="Screenplay comments" hidden><div class="script-comments-head"><h2>Comments</h2><button type="button" id="script-comments-close" aria-label="Close comments">×</button></div><div id="tool-comment-list"></div></aside></div><div class="script-comment-composer" id="script-comment-composer" hidden><p>Comment on <q id="script-selected-quote"></q></p><label for="tool-comment-body">Comment</label><textarea id="tool-comment-body" rows="3" placeholder="Write a note about this passage"></textarea><div><button type="button" id="tool-comment-add">Post comment</button><button type="button" id="script-comment-cancel">Cancel</button></div></div></form>`;
+}
+
+export function paginateScreenplay(form: HTMLFormElement): void {
+  const pages = form.querySelector<HTMLElement>(".script-pages");
+  if (!pages) return;
+  const blocks = Array.from(pages.querySelectorAll<HTMLElement>(".script-block"));
+  const active = document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null;
+  const caret = active ? [active.selectionStart, active.selectionEnd] : null;
+  const makePage = (number: number) => {
+    const page = document.createElement("article");
+    page.className = "script-page";
+    page.setAttribute("aria-label", `Screenplay page ${number}`);
+    page.innerHTML = `<div class="script-page-header"><span>${number}</span></div><div class="script-page-content"></div>`;
+    pages.append(page);
+    return page.querySelector<HTMLElement>(".script-page-content")!;
+  };
+  pages.replaceChildren();
+  let content = makePage(1);
+  content.append(...blocks);
+  const availableHeight = content.getBoundingClientRect().height;
+  const measured = blocks.map(block => ({
+    block,
+    height: block.getBoundingClientRect().height,
+    marginTop: parseFloat(getComputedStyle(block).marginTop) || 0,
+    marginBottom: parseFloat(getComputedStyle(block).marginBottom) || 0,
+  }));
+  content.replaceChildren();
+  let usedHeight = 0;
+  let previousMargin = 0;
+  for (const { block, height, marginTop, marginBottom } of measured) {
+    const gap = Math.max(previousMargin, marginTop);
+    if (content.children.length && usedHeight + gap + height > availableHeight + 1) {
+      content = makePage(pages.children.length + 1);
+      usedHeight = 0;
+      previousMargin = 0;
+    }
+    usedHeight += Math.max(previousMargin, marginTop) + height;
+    content.append(block);
+    previousMargin = marginBottom;
   }
-  if (page.length) pages.push(page);
-  const pageMarkup = pages.map((entries, index) => `<article class="script-page" aria-label="Screenplay page ${index + 1}"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Page ${index + 1}</span></div><div class="script-page-content">${entries.map(element).join("")}</div></article>`).join("");
-  return `<form id="tool-form" class="script-editor-form"><div class="script-toolbar"><div class="script-toolbar-main"><label class="script-kind-label">Element <select name="kind">${screenplayKinds.map((kind, index) => `<option value="${escapeHtml(kind)}" ${selected.fields.kind === kind ? "selected" : ""}>${escapeHtml(kind)} — Ctrl+${index}</option>`).join("")}</select></label><span class="script-shortcuts">Tab changes element · Ctrl+1–7 formats the current block</span></div><div class="script-toolbar-actions"><button type="button" id="script-navigator-toggle" aria-expanded="false" aria-controls="tool-list">Scenes</button><button type="button" id="tool-up" aria-label="Move element up">↑</button><button type="button" id="tool-down" aria-label="Move element down">↓</button><button type="button" id="script-comments-toggle" aria-expanded="false" aria-controls="script-comments-panel">Comments</button><button type="button" id="tool-print">Export PDF</button><button type="button" id="tool-remove" class="danger-text">Delete element</button></div></div><input type="hidden" name="title" value="${escapeHtml(selected.title)}"><div class="script-layout"><div class="script-pages">${pageMarkup}</div><aside class="tool-comments script-comments" id="script-comments-panel" aria-label="Screenplay comments" hidden><div class="script-comments-head"><h2>Comments</h2><button type="button" id="script-comments-close" aria-label="Close comments">×</button></div><div id="tool-comment-list"></div></aside></div><div class="script-comment-composer" id="script-comment-composer" hidden><p>Comment on <q id="script-selected-quote"></q></p><label for="tool-comment-body">Comment</label><textarea id="tool-comment-body" rows="3" placeholder="Write a note about this passage"></textarea><div><button type="button" id="tool-comment-add">Post comment</button><button type="button" id="script-comment-cancel">Cancel</button></div></div></form>`;
+  if (active && caret && active.isConnected) {
+    active.focus({ preventScroll: true });
+    active.setSelectionRange(caret[0], caret[1]);
+  }
 }
 
 export function toolWorkspace(project: Project, name: string, href: (path: string) => string): string {
@@ -422,7 +460,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         wireVisualBoard();
         return;
       }
-      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>${escapeHtml(project.title)}</span><span>Script draft</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
+      editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>1</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
       editor.querySelector("#script-start")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
@@ -476,6 +514,14 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     }
     wireCalendar();
     const form = editor.querySelector<HTMLFormElement>("#tool-form")!;
+    if (isScript) {
+      paginateScreenplay(form);
+      activePageResizeCleanup?.();
+      let resizeFrame = 0;
+      const onResize = () => { if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (form.isConnected) paginateScreenplay(form); }); };
+      window.addEventListener("resize", onResize, { passive: true });
+      activePageResizeCleanup = () => { window.removeEventListener("resize", onResize); if (resizeFrame) cancelAnimationFrame(resizeFrame); };
+    }
     if (tool === "screenplay") {
       const navigator = form.querySelector<HTMLButtonElement>("#script-navigator-toggle")!;
       navigator.onclick = () => {
@@ -516,6 +562,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       renderList();
+      if (tool === "screenplay" && event.target instanceof HTMLSelectElement && event.target.name === "kind") renderEditor();
       if (name === "calendar") { const board = editor.querySelector(".calendar-board"); if (board) { board.outerHTML = calendarMarkup(); wireCalendar(); } }
       void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; });
     });
@@ -580,11 +627,20 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const kind = (event.currentTarget as HTMLSelectElement).value;
         const block = form.querySelector<HTMLElement>(".script-block-active")!;
         block.className = `script-block script-block-active script-${kind.toLowerCase().replaceAll(" ", "-")}`;
-        block.querySelector<HTMLElement>(".script-block-kind")!.textContent = kind;
+        if (kind === "Scene Heading" && !block.querySelector(".script-scene-number")) {
+          const number = document.createElement("span"); number.className = "script-scene-number"; block.prepend(number);
+        } else if (kind !== "Scene Heading") block.querySelector(".script-scene-number")?.remove();
+        area.spellcheck = kind !== "Character" && kind !== "Scene Heading";
       });
-      const sizeScriptInput = () => { area.style.height = "0px"; area.style.height = `${Math.max(48, area.scrollHeight)}px`; };
+      const sizeScriptInput = () => { area.style.height = "0px"; area.style.height = `${Math.max(18, area.scrollHeight)}px`; };
       sizeScriptInput();
-      area.addEventListener("input", sizeScriptInput);
+      paginateScreenplay(form);
+      let pageTimer: ReturnType<typeof setTimeout> | undefined;
+      area.addEventListener("input", () => {
+        sizeScriptInput();
+        if (pageTimer) clearTimeout(pageTimer);
+        pageTimer = setTimeout(() => { if (form.isConnected) paginateScreenplay(form); }, 700);
+      });
       area.addEventListener("blur", flushScreenplaySave);
       const suggestions = form.querySelector<HTMLElement>("#script-suggestions")!;
       let suggestionValues: string[] = [];
