@@ -365,7 +365,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const elementIndex = items.length ? items.map((record, index) => `<button type="button" class="tool-list-item ${record.id === selected ? "selected" : ""}" data-select="${escapeHtml(record.id)}"><small>${index + 1 < 10 ? `0${index + 1}` : index + 1}${tool === "screenplay" ? ` · ${escapeHtml(record.fields.kind || "Action")}` : ""}</small><strong>${escapeHtml(record.title || "Untitled")}</strong></button>`).join("") : '<p class="tool-empty">Nothing here yet. Create the first item.</p>';
       list.innerHTML = tool === "screenplay" ? `${sceneNav}<details class="script-element-index"><summary>All elements <span>${items.length}</span></summary>${elementIndex}</details>` : `<h2>Items <span>${items.length}</span></h2>${elementIndex}`;
     }
-    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { if (tool === "notes") flushNoteSave(); selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); });
+    list.querySelectorAll<HTMLButtonElement>("[data-select]").forEach(button => button.onclick = () => { if (tool === "notes") flushNoteSave(); selected = button.dataset.select; revealSelected = tool === "screenplay"; renderList(); renderEditor(); if (tool === "notes") editor.querySelector<HTMLElement>(".ProseMirror")?.focus(); });
     list.querySelector<HTMLButtonElement>("#script-navigator-close")?.addEventListener("click", () => setSceneNavigator(false));
     list.querySelector<HTMLInputElement>("#scene-nav-search")?.addEventListener("input", event => {
       const query = (event.currentTarget as HTMLInputElement).value.trim().toLocaleLowerCase();

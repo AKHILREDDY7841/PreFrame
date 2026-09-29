@@ -133,11 +133,11 @@
 .studio-detail-panel p{font-size:12px;color:#758796;line-height:1.6}
 .studio-metadata{display:grid;grid-template-columns:70px 1fr;gap:15px 7px;font-size:11px;line-height:1.5;color:#5e7482}
 .studio-metadata dd{margin:0}
-.studio-workspace .studio-note-paper{padding:25px 30px;max-width:none;min-width:0}
+.studio-workspace .studio-note-paper{display:flex;flex-direction:column;padding:25px 30px;max-width:none;min-width:0}
 .studio-document-field{display:block;font-size:11px;color:#5a7282;margin:0 0 14px}
 .studio-document-field>span{display:block;margin-bottom:6px}
 .studio-workspace .studio-document-field input,.studio-workspace .studio-document-field textarea{display:block;border:1px solid #e1e9ec;border-radius:4px;background:#fcfefd;font:13px/1.5 Arial,sans-serif;padding:9px;width:100%;min-width:0;resize:vertical;color:#355262}
-.studio-note-body{display:block}
+.studio-note-body{display:flex;flex:1;flex-direction:column;min-height:0;cursor:text}
 .studio-workspace .studio-note-body textarea{width:100%;border:0;background:#fff;min-height:520px;font:16px/1.9 Arial,sans-serif;padding:20px 0;resize:vertical;color:#344c5a}
 .studio-workspace .studio-note-layout .tool-form-header,.studio-workspace .studio-location-layout .tool-form-header{display:block}
 .studio-note-layout .tool-form-actions,.studio-location-layout .tool-form-actions{justify-content:flex-end;display:flex;margin-top:8px;gap:7px}
@@ -185,7 +185,8 @@
 .studio-workspace .studio-location-layout .tool-title-label input{padding:5px 0}
 .studio-workspace .studio-note-format{display:flex;gap:5px;align-items:center;padding:10px 0;border-bottom:1px solid #e3ebee}
 .studio-note-format select{padding:8px;border:1px solid #e1e8eb;background:white;border-radius:4px}
-.studio-workspace .studio-rich-note .ProseMirror{outline:none;min-height:440px;padding:16px 0;font:15px/1.75 Arial,sans-serif;color:#405563;white-space:pre-wrap;overflow-wrap:break-word}
+.studio-workspace .studio-rich-note{display:flex;flex:1;flex-direction:column;cursor:text}
+.studio-workspace .studio-rich-note .ProseMirror{flex:1;outline:none;min-height:440px;padding:16px 0;font:15px/1.75 Arial,sans-serif;color:#405563;white-space:pre-wrap;overflow-wrap:break-word;cursor:text;caret-color:#123b51}
 .studio-rich-note .ProseMirror h1,.studio-rich-note .ProseMirror h2,.studio-rich-note .ProseMirror h3{font-family:Georgia,serif;font-weight:500;color:#16374a;line-height:1.25;margin:20px 0 10px}.studio-rich-note .ProseMirror h1{font-size:32px}.studio-rich-note .ProseMirror h2{font-size:26px}.studio-rich-note .ProseMirror h3{font-size:21px}
 .studio-rich-note .ProseMirror p{margin:0 0 12px}.studio-rich-note .ProseMirror strong{font-weight:700}
 .studio-workspace .script-block-preview{border:0!important;border-radius:0;padding:0!important;background:transparent!important;font:inherit!important;color:inherit!important;box-shadow:none}

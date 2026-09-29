@@ -14,6 +14,8 @@ test("document properties and screenplay Add element control are absent", () => 
   const document = studioDocument("notes", record, "Project");
   assert.doesNotMatch(document, /name="(?:folder|tags)"/);
   assert.match(document, /name="body"/);
+  assert.match(document, /<div class="studio-note-body">/);
+  assert.doesNotMatch(document, /<label class="studio-note-body">/);
   const workspace = toolWorkspace({ id: "project", title: "Project" }, "screenplay", path => path);
   assert.doesNotMatch(workspace, /id="tool-add"/);
 });
