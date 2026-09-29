@@ -24,11 +24,18 @@ export const screenplayKinds = ["Act", "Scene Heading", "Action", "Character", "
 export type ScreenplayKind = typeof screenplayKinds[number];
 export type ScreenplayScene = { id: string; number: number; displayNumber: string; heading: string; startBlockId: string; endBlockId: string };
 const screenplayTabKinds: ScreenplayKind[] = ["Scene Heading", "Action", "Character", "Dialogue", "Parenthetical", "Transition", "Shot", "Text", "Act"];
-const enterTransitions: Partial<Record<ScreenplayKind, ScreenplayKind>> = { "Scene Heading": "Action", Action: "Action", Character: "Dialogue", Dialogue: "Action", Parenthetical: "Dialogue", Transition: "Scene Heading", Shot: "Action", Text: "Action", Act: "Scene Heading" };
+const enterTransitions: Partial<Record<ScreenplayKind, ScreenplayKind>> = { "Scene Heading": "Action", Action: "Action", Character: "Dialogue", Dialogue: "Character", Parenthetical: "Dialogue", Transition: "Scene Heading", Shot: "Action", Text: "Text", Act: "Scene Heading" };
 export function nextScreenplayKind(kind: string, empty = false): ScreenplayKind {
   const current = screenplayKinds.includes(kind as ScreenplayKind) ? kind as ScreenplayKind : "Action";
-  if (empty && current === "Dialogue") return "Action";
+  if (empty && current === "Action") return "Character";
+  if (empty && current === "Character") return "Scene Heading";
+  if (empty && current === "Dialogue") return "Character";
   return enterTransitions[current] || "Action";
+}
+export function splitScreenplayText(text: string, start: number, end = start): [string, string] {
+  const from = Math.max(0, Math.min(start, text.length));
+  const to = Math.max(from, Math.min(end, text.length));
+  return [text.slice(0, from), text.slice(to)];
 }
 export function cycleScreenplayKind(kind: string, backwards = false): ScreenplayKind {
   const index = screenplayTabKinds.indexOf(kind as ScreenplayKind);
@@ -808,7 +815,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       renderList();
-      if (tool === "screenplay" && event.target instanceof HTMLSelectElement && event.target.name === "kind") renderEditor();
+      // Changing element type updates the active block in place above. Rebuilding
+      // the editor here would discard the focused textarea and its selection.
       if (name === "calendar") { const board = editor.querySelector(".calendar-board"); if (board) { board.outerHTML = calendarMarkup(); wireCalendar(); } }
       void persist(record).then(() => kindChanged ? syncSceneIds() : undefined).catch(error => { status.textContent = `Save failed: ${error.message}`; });
     });
@@ -860,6 +868,13 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         renderList();
         void persist(record).then(savePendingBreakdownTags).catch(error => { status.textContent = `Save failed: ${error.message}`; });
       };
+      const focusBlock = (id: string, position: number) => {
+        const nextArea = editor.querySelector<HTMLTextAreaElement>(`[data-script-id="${CSS.escape(id)}"] textarea[name="text"]`);
+        if (!nextArea) return;
+        nextArea.focus({ preventScroll: true });
+        nextArea.setSelectionRange(position, position);
+        nextArea.closest<HTMLElement>(".script-block")?.scrollIntoView({ block: "nearest" });
+      };
       const moveCursorTo = (offset: -1 | 1) => {
         flushScreenplaySave();
         const items = ordered();
@@ -870,13 +885,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         revealSelected = true;
         renderList();
         renderEditor();
-        requestAnimationFrame(() => {
-          const nextArea = editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]');
-          if (!nextArea) return;
-          nextArea.focus();
-          const position = offset < 0 ? nextArea.value.length : 0;
-          nextArea.setSelectionRange(position, position);
-        });
+        focusBlock(next.id, offset < 0 ? (next.fields.text || "").length : 0);
         return true;
       };
       form.querySelector<HTMLSelectElement>('select[name="kind"]')!.addEventListener("input", event => {
@@ -906,6 +915,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const applySuggestion = (value: string) => {
         area.value = value;
         area.dispatchEvent(new Event("input", { bubbles: true }));
+        area.focus({ preventScroll: true });
         area.setSelectionRange(area.value.length, area.value.length);
         hideSuggestions();
       };
@@ -918,25 +928,68 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         suggestions.querySelectorAll<HTMLButtonElement>("[data-script-suggestion]").forEach(button => button.onclick = () => applySuggestion(button.dataset.scriptSuggestion || ""));
       };
       area.addEventListener("input", showSuggestions);
-      const createNextBlock = async (kind = nextScreenplayKind(form.querySelector<HTMLSelectElement>('select[name="kind"]')!.value, !area.value.trim())) => {
+      const createNextBlock = () => {
         flushScreenplaySave();
         const items = ordered();
         const index = items.findIndex(item => item.id === record.id);
-        const next = newToolRecord("Untitled element", { kind, text: "", sceneId: kind === "Scene Heading" ? "" : sceneIdAt(items, record.id) || "" });
+        const currentKind = form.querySelector<HTMLSelectElement>('select[name="kind"]')!.value;
+        const empty = !area.value.trim();
+        const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
+        const kind = !atEnd && !empty ? currentKind as ScreenplayKind : nextScreenplayKind(currentKind, empty);
+        // Reuse an empty block instead of leaving orphaned blank elements behind.
+        if (empty && kind !== currentKind) {
+          record.fields.kind = kind;
+          if (kind === "Scene Heading") {
+            record.fields.sceneId = record.id;
+            if (settingsRecord.fields.revisionMode === "true") {
+              const headings = ordered().filter(item => item.fields.kind === "Scene Heading");
+              record.fields.sceneNumber = revisionSceneLabels(headings)[headings.findIndex(item => item.id === record.id)];
+            }
+          }
+          record.updatedAt = new Date().toISOString();
+          renderList(); renderEditor(); focusBlock(record.id, 0);
+          void persist(record).then(() => kind === "Scene Heading" ? syncSceneIds() : undefined).catch(error => { status.textContent = `Save failed: ${error.message}`; });
+          return;
+        }
+        const [head, tail] = splitScreenplayText(area.value, area.selectionStart, area.selectionEnd);
+        if (!atEnd) {
+          record.fields.text = head;
+          record.title = head.split("\n")[0].trim().slice(0, 80) || "Untitled element";
+        }
+        const next = newToolRecord(tail.split("\n")[0].trim().slice(0, 80) || "Untitled element", { kind, text: tail, sceneId: kind === "Scene Heading" ? "" : sceneIdAt(items, record.id) || "" });
         next.fields.order = orderBetween(record.fields.order || record.createdAt, items[index + 1]?.fields.order || items[index + 1]?.createdAt);
         if (kind === "Scene Heading") next.fields.sceneId = next.id;
+        if (!atEnd) {
+          const from = area.selectionStart;
+          const to = area.selectionEnd;
+          const comments = JSON.parse(record.fields.comments || "[]") as TextComment[];
+          record.fields.comments = JSON.stringify(comments.filter(comment => comment.from < to).map(comment => comment.to > from ? { ...comment, orphaned: true } : comment));
+          next.fields.comments = JSON.stringify(comments.filter(comment => comment.from >= to).map(comment => ({ ...comment, blockId: next.id, from: comment.from - to, to: comment.to - to })));
+          for (const tag of supportRecords.filter(item => item.fields.kind === "__breakdown" && item.fields.blockId === record.id)) {
+            const start = Number(tag.fields.from);
+            const end = Number(tag.fields.to);
+            if (start >= to) tag.fields = { ...tag.fields, blockId: next.id, from: String(start - to), to: String(end - to) };
+            else if (end > from) tag.fields = { ...tag.fields, orphaned: "true" };
+            pendingBreakdownIds.add(tag.id);
+          }
+        }
         records.push(next);
         if (kind === "Scene Heading" && settingsRecord.fields.revisionMode === "true") {
           const headings = ordered().filter(item => item.fields.kind === "Scene Heading");
           next.fields.sceneNumber = revisionSceneLabels(headings)[headings.findIndex(item => item.id === next.id)];
         }
         selected = next.id;
-        revealSelected = true;
-        await persist(next);
         renderList();
         renderEditor();
+        focusBlock(next.id, 0);
+        if (!atEnd) void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; });
+        void persist(next).then(async () => { await savePendingBreakdownTags(); if (kind === "Scene Heading") await syncSceneIds(); }).catch(error => { status.textContent = `Save failed: ${error.message}`; });
       };
+      let composing = false;
+      area.addEventListener("compositionstart", () => { composing = true; });
+      area.addEventListener("compositionend", () => { composing = false; });
       area.addEventListener("keydown", event => {
+        if (event.isComposing || composing || event.keyCode === 229) return;
         if (!suggestions.hidden && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
           event.preventDefault(); suggestionInteracted = true; activeSuggestion = (activeSuggestion + (event.key === "ArrowDown" ? 1 : suggestionValues.length - 1)) % suggestionValues.length; showSuggestions(); return;
         }
@@ -947,11 +1000,12 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         }
         if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
           event.preventDefault();
-          void createNextBlock();
+          createNextBlock();
           return;
         }
         const atStart = area.selectionStart === 0 && area.selectionEnd === 0;
         const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
+        if (event.key === "Backspace" && atStart && moveCursorTo(-1)) { event.preventDefault(); return; }
         if (event.key === "ArrowUp" && atStart && moveCursorTo(-1)) event.preventDefault();
         if (event.key === "ArrowDown" && atEnd && moveCursorTo(1)) event.preventDefault();
       });
@@ -1038,6 +1092,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       updateActiveScene();
     }
     if (tool === "screenplay") form.addEventListener("keydown", event => {
+      if (event.isComposing || event.keyCode === 229) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey) {
         const key = event.key.toLowerCase();
         const writing = event.target instanceof HTMLTextAreaElement && event.target.name === "text";
@@ -1112,7 +1167,9 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       const schedule = await toolRecords(userId, project.id, "schedule");
       record.fields.schedule = schedule.map(item => `${item.fields.date || ""} ${item.fields.time || item.fields.start || ""} ${item.title} — ${item.fields.location || ""}`).join("\n");
     }
-    records.push(record); selected = record.id; await persist(record); renderList(); renderEditor();
+    records.push(record); selected = record.id;
+    if (tool === "screenplay") { renderList(); renderEditor(); void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; }); }
+    else { await persist(record); renderList(); renderEditor(); }
     if (tool === "screenplay") editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus();
     else if (tool === "notes") editor.querySelector<HTMLElement>('.ProseMirror')?.focus();
     else if (tool === "schedule") editor.querySelector<HTMLInputElement>(`[data-schedule-cell="day"][data-record-id="${record.id}"]`)?.focus();

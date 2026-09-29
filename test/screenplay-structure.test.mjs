@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { characterSuggestions, cycleScreenplayKind, deriveScreenplayScenes, nextScreenplayKind, sceneHeadingSuggestions } from "../dist/tool-ui.js";
+import { characterSuggestions, cycleScreenplayKind, deriveScreenplayScenes, nextScreenplayKind, sceneHeadingSuggestions, splitScreenplayText } from "../dist/tool-ui.js";
 
 const block = (id, kind, text, order) => ({ id, title: text, fields: { kind, text, order }, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" });
 
@@ -8,8 +8,18 @@ test("screenplay Enter transitions follow semantic element types", () => {
   assert.equal(nextScreenplayKind("Scene Heading"), "Action");
   assert.equal(nextScreenplayKind("Character"), "Dialogue");
   assert.equal(nextScreenplayKind("Parenthetical"), "Dialogue");
-  assert.equal(nextScreenplayKind("Dialogue"), "Action");
-  assert.equal(nextScreenplayKind("Dialogue", true), "Action");
+  assert.equal(nextScreenplayKind("Dialogue"), "Character");
+  assert.equal(nextScreenplayKind("Character", true), "Scene Heading");
+  assert.equal(nextScreenplayKind("Action", true), "Character");
+  assert.equal(nextScreenplayKind("Transition"), "Scene Heading");
+  assert.equal(nextScreenplayKind("Text"), "Text");
+});
+
+test("splitting at start, middle, end, or over a selection preserves the intended text", () => {
+  assert.deepEqual(splitScreenplayText("Akhil walks slowly", 0), ["", "Akhil walks slowly"]);
+  assert.deepEqual(splitScreenplayText("Akhil walks slowly", 11), ["Akhil walks", " slowly"]);
+  assert.deepEqual(splitScreenplayText("Akhil walks slowly", 18), ["Akhil walks slowly", ""]);
+  assert.deepEqual(splitScreenplayText("Akhil walks slowly", 5, 11), ["Akhil", " slowly"]);
 });
 
 test("Tab cycles types without inserting whitespace", () => {
