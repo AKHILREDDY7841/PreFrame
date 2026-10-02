@@ -186,7 +186,7 @@
 .studio-workspace .studio-location-layout .tool-title-label input{padding:5px 0}
 .studio-workspace .studio-note-format{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:10px 0;border-bottom:1px solid #e3ebee}
 .studio-note-format select{padding:8px;border:1px solid #e1e8eb;background:white;border-radius:4px}
-.studio-workspace .studio-rich-note{display:flex;flex:1;flex-direction:column;cursor:text}
+.studio-workspace .studio-rich-note{position:relative;display:flex;flex:1;flex-direction:column;cursor:text}
 .studio-workspace .studio-rich-note .ProseMirror{flex:1;outline:none;min-height:440px;padding:16px 0;font:15px/1.75 Arial,sans-serif;color:#405563;white-space:pre-wrap;overflow-wrap:break-word;cursor:text;caret-color:#123b51}
 .studio-rich-note .ProseMirror h1,.studio-rich-note .ProseMirror h2,.studio-rich-note .ProseMirror h3{font-family:Georgia,serif;font-weight:500;color:#16374a;line-height:1.25;margin:20px 0 10px}.studio-rich-note .ProseMirror h1{font-size:32px}.studio-rich-note .ProseMirror h2{font-size:26px}.studio-rich-note .ProseMirror h3{font-size:21px}
 .studio-rich-note .ProseMirror p{margin:0 0 12px}.studio-rich-note .ProseMirror strong{font-weight:700}
@@ -331,6 +331,24 @@
 /* Document images stay inside the sheet, including on mobile and in print. */
 .studio-rich-note .ProseMirror img{display:block;max-width:100%;max-height:850px;object-fit:contain;object-position:left center;height:auto;margin:12px 0;cursor:pointer;box-sizing:border-box}
 .studio-rich-note .ProseMirror img.ProseMirror-selectednode{outline:2px solid #337687;outline-offset:3px}
-.studio-note-image-controls{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.studio-note-image-controls{position:absolute;z-index:5;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:calc(100% - 8px);padding:8px;border:1px solid #a8c6cd;border-radius:8px;background:#fff;box-shadow:0 4px 16px #153e5026}
 .studio-note-image-controls[hidden]{display:none}.studio-note-image-controls label{display:inline-flex;align-items:center;gap:8px}.studio-note-image-controls input{width:100px}.studio-note-image-status{font-size:var(--text-xs);color:#405563}
 @media print{.studio-note-format{display:none!important}.studio-rich-note .ProseMirror img{outline:none;break-inside:avoid}}
+
+/* Notes owns its viewport; the sheet and document list scroll independently. */
+.studio-workspace[data-tool=notes]{height:100dvh;min-height:0;overflow:hidden}
+.studio-workspace[data-tool=notes] .studio-main{height:100%;display:flex;flex-direction:column;min-height:0}
+.studio-workspace[data-tool=notes] .studio-utility-row,.studio-workspace[data-tool=notes] .studio-toolbar,.studio-workspace[data-tool=notes] .tool-save-status{flex:none}
+.studio-workspace[data-tool=notes] .tool-body{flex:1;min-height:0;overflow:hidden}
+.studio-workspace[data-tool=notes] .tool-list{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.studio-workspace[data-tool=notes] .tool-editor{min-height:0;overflow:hidden}
+.studio-workspace[data-tool=notes] .studio-note-layout{height:100%;min-height:0;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.studio-note-scroll{height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:8px}
+.studio-workspace[data-tool=notes] .studio-detail-panel{max-width:816px;margin:16px auto 0}
+.studio-note-selection-tools{position:absolute;z-index:6;display:flex;align-items:center;flex-wrap:wrap;gap:3px;max-width:calc(100% - 8px);padding:5px;border-radius:10px;background:#263d43;color:#fff;box-shadow:0 5px 18px #153e5033}
+.studio-note-selection-tools[hidden],.studio-note-link-edit[hidden]{display:none}
+.studio-workspace .studio-note-selection-tools button,.studio-workspace .studio-note-selection-tools select{border:0;background:transparent;color:#fff;min-height:34px;padding:5px 9px;border-radius:5px}
+.studio-note-selection-tools select option{color:#16374a;background:#fff}.studio-note-selection-tools button:hover,.studio-note-selection-tools button[aria-pressed=true]{background:#ffffff26}
+.studio-note-link-edit{display:flex;flex-basis:100%;flex-wrap:wrap;gap:4px;padding-top:5px}.studio-note-link-edit input{width:160px;min-width:0;background:#fff;color:#16374a;border:1px solid #b9cbd0;border-radius:5px;padding:6px}.studio-note-link-edit span{font-size:13px}
+@media(max-width:700px){.studio-workspace[data-tool=notes] .tool-body{display:flex;flex-direction:column}.studio-workspace[data-tool=notes] .tool-list{flex:none;max-height:130px}.studio-workspace[data-tool=notes] .tool-editor{flex:1;padding:8px}.studio-note-scroll{padding:4px}.studio-note-image-controls{gap:5px}.studio-note-image-controls input{width:80px}}
+@media print{.studio-workspace[data-tool=notes],.studio-workspace[data-tool=notes] .studio-main,.studio-workspace[data-tool=notes] .tool-body,.studio-workspace[data-tool=notes] .tool-editor,.studio-workspace[data-tool=notes] .studio-note-layout,.studio-note-scroll{height:auto;overflow:visible}.studio-note-selection-tools,.studio-note-image-controls{display:none!important}}

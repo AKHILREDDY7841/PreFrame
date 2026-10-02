@@ -32,6 +32,42 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   const imageControls = toolbar.querySelector<HTMLElement>('.studio-note-image-controls')!;
   const imageSize = imageControls.querySelector<HTMLInputElement>('input')!;
   const imageStatus = toolbar.querySelector<HTMLElement>('.studio-note-image-status')!;
+  host.append(imageControls);
+  const selectionTools = document.createElement('div');
+  selectionTools.className = 'studio-note-selection-tools'; selectionTools.hidden = true;
+  selectionTools.setAttribute('role', 'toolbar'); selectionTools.setAttribute('aria-label', 'Selected text formatting');
+  selectionTools.innerHTML = '<button type="button" data-link aria-label="Add or edit link">↗</button><button type="button" data-mark="strong" aria-label="Bold selected text"><b>B</b></button><button type="button" data-mark="em" aria-label="Italic selected text"><i>I</i></button><select aria-label="Selected text style"><option value="0">Text</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option></select><div class="studio-note-link-edit" hidden><input type="url" aria-label="Link URL" placeholder="https://…"><button type="button" data-link-save>Apply</button><button type="button" data-link-remove>Remove</button><span role="status"></span></div>';
+  host.append(selectionTools);
+  let overlayFrame = 0;
+  const scheduleOverlays = () => { cancelAnimationFrame(overlayFrame); overlayFrame = requestAnimationFrame(positionOverlays); };
+  const positionOverlays = () => {
+    if (!host.isConnected) return;
+    const scroll = form.querySelector<HTMLElement>('.studio-note-scroll')!;
+    const bounds = scroll.getBoundingClientRect(), origin = host.getBoundingClientRect();
+    const selection = view.state.selection;
+    const imageSelected = selection instanceof NodeSelection && selection.node.type === noteSchema.nodes.image;
+    imageControls.hidden = !imageSelected;
+    selectionTools.hidden = imageSelected || selection.empty;
+    const place = (panel: HTMLElement, rect: {left: number; top: number; bottom: number; right: number}, image: boolean) => {
+      if (rect.bottom < bounds.top || rect.top > bounds.bottom) { panel.hidden = true; return; }
+      const width = panel.offsetWidth, height = panel.offsetHeight;
+      const left = Math.max(origin.left + 4, Math.min(rect.left, origin.right - width - 4));
+      const top = image ? Math.max(rect.top, rect.bottom - height - 8) : rect.top - height - 8;
+      panel.style.left = `${left - origin.left}px`;
+      panel.style.top = `${Math.max(bounds.top + 4, Math.min(top, bounds.bottom - height - 4)) - origin.top}px`;
+    };
+    if (imageSelected) {
+      const image = view.nodeDOM(selection.from) as HTMLElement | null;
+      if (image) place(imageControls, image.getBoundingClientRect(), true);
+    } else if (!selection.empty) {
+      const start = view.coordsAtPos(selection.from), end = view.coordsAtPos(selection.to);
+      place(selectionTools, {left: start.left, right: end.right, top: start.top, bottom: end.bottom}, false);
+      const marks = view.state.doc.rangeHasMark(selection.from, selection.to, noteSchema.marks.strong);
+      selectionTools.querySelector('[data-mark="strong"]')!.setAttribute('aria-pressed', String(marks));
+      selectionTools.querySelector('[data-mark="em"]')!.setAttribute('aria-pressed', String(view.state.doc.rangeHasMark(selection.from, selection.to, noteSchema.marks.em)));
+      selectionTools.querySelector<HTMLSelectElement>('select')!.value = style.value;
+    }
+  };
   const pendingPastes = new Set<(mapping: Transaction['mapping']) => void>();
   const view = new EditorView(host, {
     handlePaste(_view, event) {
@@ -78,6 +114,7 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
       const selectedImage = view.state.selection instanceof NodeSelection && view.state.selection.node.type === noteSchema.nodes.image;
       imageControls.hidden = !selectedImage;
       if (selectedImage) { imageSize.value = String((view.state.selection as NodeSelection).node.attrs.width); imageControls.querySelector('output')!.textContent = `${imageSize.value}%`; }
+      scheduleOverlays();
       const block = view.state.selection.$from.parent;
       style.value = block.type === noteSchema.nodes.heading ? String(block.attrs.level) : '0';
       if(transaction.docChanged){source.value=view.state.doc.textBetween(0,view.state.doc.content.size,'\n');hidden.value=JSON.stringify(view.state.doc.toJSON());source.dispatchEvent(new Event('input',{bubbles:true}));}
@@ -96,6 +133,43 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
     if (tr.doc.nodeAt(pos)?.type !== noteSchema.nodes.paragraph) tr.insert(pos, noteSchema.nodes.paragraph.create());
     view.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1)).scrollIntoView()); view.focus();
   };
+  selectionTools.addEventListener('mousedown', event => {
+    if ((event.target as Element).closest('button')) event.preventDefault();
+  });
+  selectionTools.querySelectorAll<HTMLButtonElement>('[data-mark]').forEach(button => {
+    button.onclick = () => { toggleMark(noteSchema.marks[button.dataset.mark!])(view.state, view.dispatch); view.focus(); };
+  });
+  selectionTools.querySelector<HTMLSelectElement>('select')!.onchange = event => {
+    const level = Number((event.target as HTMLSelectElement).value);
+    setBlockType(level ? noteSchema.nodes.heading : noteSchema.nodes.paragraph, level ? {level} : null)(view.state, view.dispatch); view.focus();
+  };
+  const linkEdit = selectionTools.querySelector<HTMLElement>('.studio-note-link-edit')!;
+  const linkInput = linkEdit.querySelector<HTMLInputElement>('input')!;
+  selectionTools.querySelector<HTMLButtonElement>('[data-link]')!.onclick = () => {
+    linkEdit.hidden = !linkEdit.hidden;
+    if (!linkEdit.hidden) {
+      let href = ''; view.state.doc.nodesBetween(view.state.selection.from, view.state.selection.to, node => { const link = node.marks.find(mark => mark.type === noteSchema.marks.link); if (link) href = link.attrs.href; });
+      linkInput.value = href; linkInput.focus();
+    }
+    scheduleOverlays();
+  };
+  const applyLink = (remove: boolean) => {
+    const href = linkInput.value.trim();
+    if (!remove && !/^(https?:\/\/|mailto:)/i.test(href)) { linkEdit.querySelector('span')!.textContent = 'Use an https:// or mailto: link.'; return; }
+    const {from, to} = view.state.selection;
+    if (from === to) return;
+    const tr = view.state.tr.removeMark(from, to, noteSchema.marks.link);
+    if (!remove) tr.addMark(from, to, noteSchema.marks.link.create({href}));
+    view.dispatch(tr); linkEdit.hidden = true; view.focus(); scheduleOverlays();
+  };
+  selectionTools.querySelector<HTMLButtonElement>('[data-link-save]')!.onclick = () => applyLink(false);
+  selectionTools.querySelector<HTMLButtonElement>('[data-link-remove]')!.onclick = () => applyLink(true);
+  linkInput.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); applyLink(false); } if (event.key === 'Escape') { linkEdit.hidden = true; view.focus(); scheduleOverlays(); } };
+  const sheetScroll = form.querySelector<HTMLElement>('.studio-note-scroll')!;
+  sheetScroll.addEventListener('scroll', scheduleOverlays, {passive: true});
+  window.addEventListener('resize', scheduleOverlays);
+  view.dom.addEventListener('mouseup', scheduleOverlays);
+  view.dom.addEventListener('keyup', scheduleOverlays);
   const initialBlock = view.state.selection.$from.parent;
   style.value = initialBlock.type === noteSchema.nodes.heading ? String(initialBlock.attrs.level) : '0';
   const focusEnd = () => {
@@ -105,7 +179,7 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   const paper = form.querySelector<HTMLElement>('.studio-note-paper')!;
   paper.addEventListener('mousedown', event => {
     const target = event.target;
-    if (!(target instanceof Element) || target.closest('.tool-form-header,.studio-note-format,.ProseMirror')) return;
+    if (!(target instanceof Element) || target.closest('.tool-form-header,.studio-note-format,.studio-note-selection-tools,.studio-note-image-controls,.ProseMirror')) return;
     if (event.clientY < view.dom.getBoundingClientRect().top) return;
     event.preventDefault();
     focusEnd();
@@ -120,6 +194,6 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   style.onchange=event=>{const level=Number((event.target as HTMLSelectElement).value);setBlockType(level?noteSchema.nodes.heading:noteSchema.nodes.paragraph,level?{level}:null)(view.state,view.dispatch);view.focus();};
   toolbar.querySelectorAll<HTMLButtonElement>('[data-history]').forEach(button=>button.onclick=()=>{(button.dataset.history==='undo'?undo:redo)(view.state,view.dispatch);view.focus();});
   // Destroy detached editors so navigating between documents releases listeners.
-  const observer=new MutationObserver(()=>{if(!host.isConnected){view.destroy();observer.disconnect();}});
+  const observer=new MutationObserver(()=>{if(!host.isConnected){cancelAnimationFrame(overlayFrame); window.removeEventListener('resize', scheduleOverlays); view.destroy();observer.disconnect();}});
   observer.observe(document.getElementById('app')!,{childList:true,subtree:true});
 }
