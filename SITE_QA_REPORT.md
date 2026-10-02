@@ -44,6 +44,8 @@ Shared rem tokens live in styles.css. Existing interface rules were normalized t
 
 Mobile controls wrap as full buttons rather than narrow squeezed columns. Collection cover images now fill their cards. Collaboration choices stack. Tools closes through its close button or Escape, returns focus to Tools, and its hidden navigation is inert. Menu header controls fit inside the shared flex row. Admin metric fallback text fits its grid. The Free hero quote has readable contrast. The Premium badge no longer truncates a long preview label.
 
+The Home dashboard now stacks at 1100px using one shared breakpoint for both the main grid and its schedule/activity columns. Removed the conflicting legacy breakpoint that split a narrow right column into two cards. This fixes overlap at intermediate desktop widths.
+
 A standard-width screenplay retains its internal horizontal document scroll on narrow screens; it is not reformatted into a narrow screenplay sheet.
 
 ## Verification
