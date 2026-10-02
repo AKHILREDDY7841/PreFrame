@@ -86,25 +86,33 @@ async function loadToolRecords(ownerId: string, projectId: string, tool: ToolNam
   }
   return signedToolImages(ownerId, remote);
 }
+export class ToolRecordConflict extends Error {
+  constructor(public current: ToolRecord) { super('Another tab saved a newer version of this item.'); }
+}
 export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedRevision = 0): Promise<number> {
-  const item: Stored = { ...record, revision: expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
+  const supabase = await cloudFor(ownerId);
+  const item: Stored = { ...record, revision: supabase ? expectedRevision : expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
   const db = await database();
   const localRevision = await new Promise<number>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
+    let conflict: ToolRecord | undefined;
     const request = store.get(item.key);
     request.onsuccess = () => {
       const current = request.result as Stored | undefined;
-      if ((current?.revision || 0) !== expectedRevision) { tx.abort(); return; }
+      if (!supabase && (current?.revision || 0) !== expectedRevision) { conflict = current; tx.abort(); return; }
       store.put(item);
     };
     tx.oncomplete = () => { db.close(); resolve(item.revision!); };
-    tx.onabort = () => { db.close(); reject(new Error("This item changed in another tab. Reload before editing it again.")); };
+    tx.onabort = () => { db.close(); reject(conflict ? new ToolRecordConflict(conflict) : tx.error || new Error("Could not save this item on this device.")); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
-  const supabase = await cloudFor(ownerId);
   if (!supabase) return localRevision;
   const { data, error } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: expectedRevision });
+  if (error?.code === '40001') {
+    const {data: current} = await supabase.from('project_tool_records').select('id,title,fields,created_at,updated_at,revision').eq('project_id', projectId).eq('tool', tool).eq('id', record.id).single();
+    if (current) throw new ToolRecordConflict(fromCloud(current as CloudRow));
+  }
   if (error || !data) throw new Error(error?.message || "Could not sync this record");
   const remote = fromCloud(data as CloudRow);
   // Keep the offline copy aligned to the authoritative cloud revision.

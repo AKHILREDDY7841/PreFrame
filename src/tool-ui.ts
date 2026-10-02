@@ -1,9 +1,10 @@
+import { mergeToolEdits } from './tool-save.js';
 import { mountNoteEditor } from "./note-editor.js";
 import { studioDocument } from "./studio-documents.js";
 import { studioShell } from "./studio-shell.js";
 import { findScriptText, orderBetween, revisionSceneLabels, sceneIdAt, snapshotScript, wordCount, type ScriptSnapshot } from "./screenplay-engine.js";
 import type { Project } from "./domain.js";
-import { deleteToolRecord, newToolRecord, saveToolRecord, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
+import { deleteToolRecord, newToolRecord, saveToolRecord, ToolRecordConflict, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
 
 let activeToolChannel: { unsubscribe: () => unknown } | null = null;
 let activeSceneScrollCleanup: (() => void) | null = null;
@@ -257,6 +258,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let scheduleChooserOpen = !savedScheduleFields && records.length === 0;
   let calendarMonth = new Date();
   const savedRevisions = new Map(loadedRecords.map(record => [record.id, record.revision || 0]));
+  const savedCopies = new Map(loadedRecords.map(record => [record.id, structuredClone(record)]));
   const pendingRecordIds = new Map<string, number>();
   let settingsRecord = supportRecords.find(item => item.fields.kind === "__settings") || newToolRecord("Screenplay settings", { kind: "__settings", revisionMode: "false", title: project.title });
   const saveSettings = async () => {
@@ -324,20 +326,55 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   const persist = (record: ToolRecord) => {
     status.textContent = "Saving on this device…";
     const snapshot = { ...record, fields: { ...record.fields }, updatedAt: new Date().toISOString() };
-    pendingRecordIds.set(record.id, (pendingRecordIds.get(record.id) || 0) + 1);
+    const pendingId = record.id;
+    pendingRecordIds.set(pendingId, (pendingRecordIds.get(pendingId) || 0) + 1);
     const task = saveQueue.then(async () => {
-      const revision = await saveToolRecord(userId, project.id, tool, snapshot, savedRevisions.get(record.id) || 0);
+      if (snapshot.id !== record.id) { snapshot.id = record.id; snapshot.title = record.title; snapshot.createdAt = record.createdAt; }
+      let revision: number;
+      let recovery = false;
+      try { revision = await saveToolRecord(userId, project.id, tool, snapshot, savedRevisions.get(record.id) || 0); }
+      catch (error) {
+        if (!(error instanceof ToolRecordConflict) || tool !== 'notes') throw error;
+        const base = savedCopies.get(record.id);
+        const merged = base && mergeToolEdits(base, snapshot, error.current);
+        // Only rebase in place when it leaves the open document body untouched.
+        if (merged && merged.fields.body === snapshot.fields.body && merged.fields.richBody === snapshot.fields.richBody) {
+          Object.assign(snapshot, merged);
+          revision = await saveToolRecord(userId, project.id, tool, snapshot, error.current.revision || 0);
+          for (const [key, value] of Object.entries(merged.fields)) if (record.fields[key] === base?.fields[key]) record.fields[key] = value;
+          if (record.title === base?.title) record.title = merged.title;
+        } else {
+          const copy = newToolRecord(`${snapshot.title} — recovered copy`, snapshot.fields);
+          revision = await saveToolRecord(userId, project.id, tool, copy, 0);
+          const oldId = record.id;
+          records.push(structuredClone(error.current));
+          snapshot.id = copy.id; snapshot.title = copy.title; snapshot.createdAt = copy.createdAt;
+          record.id = copy.id; record.title = copy.title; record.createdAt = copy.createdAt;
+          selected = copy.id;
+          savedRevisions.set(oldId, error.current.revision || 0); savedCopies.set(oldId, structuredClone(error.current));
+          recovery = true;
+        }
+        if (isCurrent()) {
+          const form = editor.querySelector<HTMLFormElement>('#tool-form');
+          if (form) for (const input of form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[name]')) {
+            if (input.name === 'title') input.value = record.title;
+            else if (input.name in record.fields && input.name !== 'body' && input.name !== 'richBody') input.value = record.fields[input.name];
+          }
+          renderList();
+        }
+      }
+      savedCopies.set(record.id, structuredClone({...snapshot, revision}));
       savedRevisions.set(record.id, revision);
       record.revision = revision;
       record.updatedAt = snapshot.updatedAt;
-      if (isCurrent()) status.textContent = userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+      if (isCurrent()) status.textContent = recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
       if (tool === "screenplay" && !snapshot.fields.kind?.startsWith("__") && Date.now() - lastHistoryAt > 15 * 60_000) {
         lastHistoryAt = Date.now();
         void saveSnapshot("__history", new Date().toLocaleString()).catch(() => { lastHistoryAt = 0; });
       }
     });
     saveQueue = task.catch(() => {});
-    return task.finally(() => { const remaining = (pendingRecordIds.get(record.id) || 1) - 1; if (remaining) pendingRecordIds.set(record.id, remaining); else pendingRecordIds.delete(record.id); });
+    return task.finally(() => { const remaining = (pendingRecordIds.get(pendingId) || 1) - 1; if (remaining) pendingRecordIds.set(pendingId, remaining); else pendingRecordIds.delete(pendingId); });
   };
   document.querySelector("#studio-print")?.addEventListener("click", () => {
     const paper = document.querySelector<HTMLElement>("#tool-print-document")!;
@@ -1156,7 +1193,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         supportRecords = tool === "screenplay" ? refreshed.filter(item => item.fields.kind?.startsWith("__")) : [];
         records = tool === "screenplay" ? refreshed.filter(item => !item.fields.kind?.startsWith("__")) : refreshed;
         if (tool === "screenplay") settingsRecord = supportRecords.find(item => item.fields.kind === "__settings") || settingsRecord;
-        savedRevisions.clear(); refreshed.forEach(item => savedRevisions.set(item.id, item.revision || 0));
+        savedRevisions.clear(); savedCopies.clear(); refreshed.forEach(item => { savedRevisions.set(item.id, item.revision || 0); savedCopies.set(item.id, structuredClone(item)); });
         if (!selected || !records.some(item => item.id === selected)) selected = records[0]?.id;
         renderList(); renderEditor(); status.textContent = "Updated by a collaborator";
       }).subscribe();

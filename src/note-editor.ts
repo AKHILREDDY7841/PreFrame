@@ -42,7 +42,7 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   const scheduleOverlays = () => { cancelAnimationFrame(overlayFrame); overlayFrame = requestAnimationFrame(positionOverlays); };
   const positionOverlays = () => {
     if (!host.isConnected) return;
-    const scroll = form.querySelector<HTMLElement>('.studio-note-scroll')!;
+    const scroll = form.closest<HTMLElement>('.tool-editor')!;
     const bounds = scroll.getBoundingClientRect(), origin = host.getBoundingClientRect();
     const selection = view.state.selection;
     const imageSelected = selection instanceof NodeSelection && selection.node.type === noteSchema.nodes.image;
@@ -165,7 +165,7 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   selectionTools.querySelector<HTMLButtonElement>('[data-link-save]')!.onclick = () => applyLink(false);
   selectionTools.querySelector<HTMLButtonElement>('[data-link-remove]')!.onclick = () => applyLink(true);
   linkInput.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); applyLink(false); } if (event.key === 'Escape') { linkEdit.hidden = true; view.focus(); scheduleOverlays(); } };
-  const sheetScroll = form.querySelector<HTMLElement>('.studio-note-scroll')!;
+  const sheetScroll = form.closest<HTMLElement>('.tool-editor')!;
   sheetScroll.addEventListener('scroll', scheduleOverlays, {passive: true});
   window.addEventListener('resize', scheduleOverlays);
   view.dom.addEventListener('mouseup', scheduleOverlays);
