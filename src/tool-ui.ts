@@ -851,6 +851,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         const title = settingsRecord.fields;
         paper.innerHTML = `<section class="script-title-page"><h1>${escapeHtml(title.title || project.title)}</h1><p>${title.writtenBy ? `Written by<br>${escapeHtml(title.writtenBy)}` : ""}</p><p>${escapeHtml(title.basedOn || "")}</p><div>${escapeHtml(title.contact || "").replaceAll("\n", "<br>")}<br>${escapeHtml(title.copyright || "")}<br>${escapeHtml(title.custom || "")}</div></section>${ordered().map(item => `<p class="script-print-${(item.fields.kind || "Text").toLowerCase().replaceAll(" ", "-")}">${escapeHtml(item.fields.text || "")}</p>`).join("")}`;
       }
+      else if (tool === "notes") {
+        const rich = form.querySelector('.ProseMirror')?.cloneNode(true) as HTMLElement | undefined;
+        rich?.querySelectorAll('.ProseMirror-selectednode').forEach(node => node.classList.remove('ProseMirror-selectednode'));
+        paper.innerHTML = `<h1>${escapeHtml(project.title)}</h1><h2>${escapeHtml(record.title)}</h2><div class="studio-rich-note">${rich?.outerHTML || escapeHtml(record.fields.body || '')}</div>`;
+      }
       else paper.innerHTML = `<h1>${escapeHtml(project.title)}</h1><h2>${escapeHtml(record.title)}</h2>${Array.from(form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]")).filter(input => input.name !== "title" && input.name !== "richBody").map(input => `<section><h2>${escapeHtml(input.closest("label")?.querySelector("span")?.textContent || input.name)}</h2><p>${escapeHtml(input.value || "—")}</p></section>`).join("")}`;
       print();
     });

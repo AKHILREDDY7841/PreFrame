@@ -1,6 +1,6 @@
 import { Schema } from 'prosemirror-model';
 import { schema } from 'prosemirror-schema-basic';
-import { EditorState, TextSelection } from 'prosemirror-state';
+import { EditorState, TextSelection, NodeSelection, type Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { baseKeymap, setBlockType, toggleMark } from 'prosemirror-commands';
 import { keymap } from 'prosemirror-keymap';
@@ -10,25 +10,92 @@ import { history, undo, redo } from 'prosemirror-history';
 export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined): void {
   const source = form.querySelector<HTMLTextAreaElement>('textarea[name="body"]');
   if (!source) return;
-  const noteSchema = new Schema({ nodes: schema.spec.nodes, marks: schema.spec.marks });
+  const noteSchema = new Schema({ nodes: schema.spec.nodes.update('image', {
+    inline: false, group: 'block', atom: true, draggable: true,
+    attrs: {src: {}, alt: {default: ''}, title: {default: null}, width: {default: 100}},
+    parseDOM: [{tag: 'img[src]', getAttrs: element => {
+      const image = element as HTMLImageElement;
+      const src = image.getAttribute('src') || '';
+      if (!/^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,)/i.test(src)) return false;
+      return {src, alt: image.alt, title: image.title || null, width: Math.min(100, Math.max(10, Number(image.dataset.noteWidth) || 100))};
+    }}],
+    toDOM: node => ['img', {src: node.attrs.src, alt: node.attrs.alt, title: node.attrs.title, 'data-note-width': node.attrs.width, style: `width:${Math.min(100, Math.max(10, Number(node.attrs.width) || 100))}%;max-width:100%;height:auto`}]
+  }), marks: schema.spec.marks });
   let doc;
   try { doc = saved ? noteSchema.nodeFromJSON(JSON.parse(saved)) : undefined; } catch { /* Preserve the plain-text fallback. */ }
   if (!doc) doc = noteSchema.node('doc', null, source.value.split('\n').map(line => noteSchema.node('paragraph', null, line ? noteSchema.text(line) : undefined)));
   const hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.name = 'richBody'; hidden.value = JSON.stringify(doc.toJSON()); form.append(hidden);
   const toolbar = document.createElement('div'); toolbar.className = 'studio-note-format'; toolbar.setAttribute('role','toolbar'); toolbar.setAttribute('aria-label','Document formatting');
-  toolbar.innerHTML = '<select aria-label="Paragraph style"><option value="0">Paragraph</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option></select><button type="button" data-mark="strong" aria-label="Bold"><b>B</b></button><button type="button" data-mark="em" aria-label="Italic"><i>I</i></button><button type="button" data-history="undo">Undo</button><button type="button" data-history="redo">Redo</button>';
+  toolbar.innerHTML = '<select aria-label="Paragraph style"><option value="0">Paragraph</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option></select><button type="button" data-mark="strong" aria-label="Bold"><b>B</b></button><button type="button" data-mark="em" aria-label="Italic"><i>I</i></button><button type="button" data-history="undo">Undo</button><button type="button" data-history="redo">Redo</button><span class="studio-note-image-controls" hidden><label>Image size <input type="range" min="10" max="100" step="5" value="100" aria-label="Image width percent"></label><output>100%</output><button type="button" data-image-below>Write below image</button></span><span class="studio-note-image-status" role="status"></span>';
   const host = document.createElement('div'); host.className = 'studio-rich-note'; source.before(toolbar,host); source.hidden=true;
   const style = toolbar.querySelector<HTMLSelectElement>('select')!;
+  const imageControls = toolbar.querySelector<HTMLElement>('.studio-note-image-controls')!;
+  const imageSize = imageControls.querySelector<HTMLInputElement>('input')!;
+  const imageStatus = toolbar.querySelector<HTMLElement>('.studio-note-image-status')!;
+  const pendingPastes = new Set<(mapping: Transaction['mapping']) => void>();
   const view = new EditorView(host, {
+    handlePaste(_view, event) {
+      const files = Array.from(event.clipboardData?.items || []).filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter((file): file is File => !!file);
+      if (!files.length) return false;
+      event.preventDefault();
+      // Keep a mapped bookmark: asynchronous decoding must not steal a later caret.
+      let bookmark = view.state.selection.getBookmark();
+      const mapPaste = (mapping: Transaction['mapping']) => { bookmark = bookmark.map(mapping); };
+      pendingPastes.add(mapPaste);
+      imageStatus.textContent = 'Adding image…';
+      (async () => {
+        try {
+          for (const file of files) {
+            if (file.size > 20 * 1024 * 1024) throw new Error('Use an image smaller than 20 MB.');
+            const bitmap = await createImageBitmap(file);
+            const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+            const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+            canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+            if (!host.isConnected) return;
+            const image = noteSchema.nodes.image.create({src: canvas.toDataURL('image/webp', .85), alt: file.name, width: 100});
+            const selection = bookmark.resolve(view.state.doc);
+            const currentSelection = view.state.selection;
+            const stillAtPaste = currentSelection.eq(selection);
+            const tr = view.state.tr.setSelection(selection).replaceSelectionWith(image);
+            let after = tr.selection.to;
+            tr.doc.descendants((node, pos) => { if (node === image) after = pos + node.nodeSize; });
+            if (tr.doc.nodeAt(after)?.type !== noteSchema.nodes.paragraph) tr.insert(after, noteSchema.nodes.paragraph.create());
+            tr.setSelection(stillAtPaste ? TextSelection.create(tr.doc, after + 1) : currentSelection.map(tr.doc, tr.mapping));
+            view.dispatch(stillAtPaste ? tr.scrollIntoView() : tr);
+            if (stillAtPaste) view.focus();
+          }
+          imageStatus.textContent = 'Image added. Click it to resize.';
+        } catch (error) { imageStatus.textContent = error instanceof Error ? error.message : 'Could not paste this image. Try copying the image itself.'; }
+        finally { pendingPastes.delete(mapPaste); }
+      })();
+      return true;
+    },
     state: EditorState.create({schema:noteSchema,doc,plugins:[history(),keymap({'Mod-b':toggleMark(noteSchema.marks.strong),'Mod-i':toggleMark(noteSchema.marks.em),'Mod-z':undo,'Mod-y':redo,'Mod-Shift-z':redo}),keymap(baseKeymap)]}),
     attributes:{'aria-label':'Document editor',role:'textbox','aria-multiline':'true'},
     dispatchTransaction(transaction){
+      pendingPastes.forEach(map => map(transaction.mapping));
       view.updateState(view.state.apply(transaction));
+      const selectedImage = view.state.selection instanceof NodeSelection && view.state.selection.node.type === noteSchema.nodes.image;
+      imageControls.hidden = !selectedImage;
+      if (selectedImage) { imageSize.value = String((view.state.selection as NodeSelection).node.attrs.width); imageControls.querySelector('output')!.textContent = `${imageSize.value}%`; }
       const block = view.state.selection.$from.parent;
       style.value = block.type === noteSchema.nodes.heading ? String(block.attrs.level) : '0';
       if(transaction.docChanged){source.value=view.state.doc.textBetween(0,view.state.doc.content.size,'\n');hidden.value=JSON.stringify(view.state.doc.toJSON());source.dispatchEvent(new Event('input',{bubbles:true}));}
     }
   });
+  imageSize.oninput = () => {
+    const selection = view.state.selection;
+    if (!(selection instanceof NodeSelection) || selection.node.type !== noteSchema.nodes.image) return;
+    view.dispatch(view.state.tr.setNodeMarkup(selection.from, undefined, {...selection.node.attrs, width: Number(imageSize.value)}));
+  };
+  imageControls.querySelector<HTMLButtonElement>('[data-image-below]')!.onclick = () => {
+    const selection = view.state.selection;
+    if (!(selection instanceof NodeSelection)) return;
+    const pos = selection.to;
+    const tr = view.state.tr;
+    if (tr.doc.nodeAt(pos)?.type !== noteSchema.nodes.paragraph) tr.insert(pos, noteSchema.nodes.paragraph.create());
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1)).scrollIntoView()); view.focus();
+  };
   const initialBlock = view.state.selection.$from.parent;
   style.value = initialBlock.type === noteSchema.nodes.heading ? String(initialBlock.attrs.level) : '0';
   const focusEnd = () => {

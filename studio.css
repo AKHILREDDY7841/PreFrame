@@ -327,3 +327,10 @@
 
 .workspace-page .empty-workspace h1,.premium-blocked h1{font-size:var(--heading-lg);line-height:1.15}.studio-utility-row .studio-project-button{white-space:nowrap}
 @media(max-width:640px){.studio-toolbar-actions{width:100%;justify-content:flex-start}.studio-toolbar-actions button{flex:none;white-space:nowrap}.collection-content .home-section-heading{flex-wrap:wrap}.studio-utility-row .studio-project-button{white-space:normal}.studio-workspace .tool-empty{font-size:var(--text-base)}}
+
+/* Document images stay inside the sheet, including on mobile and in print. */
+.studio-rich-note .ProseMirror img{display:block;max-width:100%;max-height:850px;object-fit:contain;object-position:left center;height:auto;margin:12px 0;cursor:pointer;box-sizing:border-box}
+.studio-rich-note .ProseMirror img.ProseMirror-selectednode{outline:2px solid #337687;outline-offset:3px}
+.studio-note-image-controls{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.studio-note-image-controls[hidden]{display:none}.studio-note-image-controls label{display:inline-flex;align-items:center;gap:8px}.studio-note-image-controls input{width:100px}.studio-note-image-status{font-size:var(--text-xs);color:#405563}
+@media print{.studio-note-format{display:none!important}.studio-rich-note .ProseMirror img{outline:none;break-inside:avoid}}
