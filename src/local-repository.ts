@@ -1,7 +1,7 @@
 import { type Identity, type Project, sampleProject } from "./domain.js";
 import type { ProjectRepository, WriteResult } from "./repository.js";
 const DB = "preframe-local-v1"; const STORE = "projects";
-function openDb(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const request = indexedDB.open(DB, 1); request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" }); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); }); }
+function openDb(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const request = indexedDB.open(DB, 1); request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" }); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error("Browser storage is blocked. Close other PreFrame tabs and retry.")); }); }
 async function allProjects() { const db = await openDb(); return new Promise<Project[]>((resolve, reject) => { const request = db.transaction(STORE).objectStore(STORE).getAll(); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); }); }
 async function put(project: Project) { const db = await openDb(); return new Promise<void>((resolve, reject) => { const request = db.transaction(STORE, "readwrite").objectStore(STORE).put(project); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
 export class LocalProjectRepository implements ProjectRepository {

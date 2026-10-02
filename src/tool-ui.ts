@@ -221,6 +221,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   const sceneNavigatorKey = `preframe-scene-navigator-v2:${userId}:${project.id}`;
   const setSidebar = (open: boolean) => {
     workspace.classList.toggle("studio-sidebar-open", open);
+    const panel=workspace.querySelector<HTMLElement>("#studio-sidebar-panel");if(panel){panel.inert=!open;panel.setAttribute("aria-hidden",String(!open));}
     sidebarToggle?.setAttribute("aria-expanded", String(open));
     localStorage.setItem(sidebarKey, String(open));
   };
@@ -230,15 +231,16 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     localStorage.setItem(sceneNavigatorKey, String(open));
   };
   setSidebar(localStorage.getItem(sidebarKey) === "true");
-  sidebarToggle?.addEventListener("click", () => setSidebar(!workspace.classList.contains("studio-sidebar-open")));
-  workspace.querySelector<HTMLButtonElement>("#studio-sidebar-close")?.addEventListener("click", () => setSidebar(false));
+  sidebarToggle?.addEventListener("click", () => {setSidebar(!workspace.classList.contains("studio-sidebar-open"));workspace.querySelector<HTMLButtonElement>("#studio-sidebar-close")?.focus();});
+  workspace.querySelector<HTMLButtonElement>("#studio-sidebar-close")?.addEventListener("click", () => {setSidebar(false);sidebarToggle?.focus();});
+  workspace.addEventListener("keydown",event=>{if(event.key==="Escape"&&workspace.classList.contains("studio-sidebar-open")){event.preventDefault();setSidebar(false);sidebarToggle?.focus();}});
   workspace.querySelectorAll<HTMLAnchorElement>(".studio-sidebar a[data-route]").forEach(link => link.addEventListener("click", () => setSidebar(false)));
-  const isCurrent = () => document.querySelector<HTMLElement>(".tool-page")?.dataset.project === project.id && document.querySelector<HTMLElement>(".tool-page")?.dataset.tool === name;
-  const loadedRecords = await toolRecords(userId, project.id, tool);
+  const isCurrent = () => workspace.isConnected && document.querySelector(".tool-page") === workspace;
+  const [loadedRecords, sceneRecords, shotRecords] = await Promise.all([toolRecords(userId, project.id, tool), tool === "shots" || tool === "storyboards" ? toolRecords(userId, project.id, "screenplay") : Promise.resolve([]), tool === "storyboards" ? toolRecords(userId, project.id, "shots") : Promise.resolve([])]);
   let supportRecords = tool === "screenplay" ? loadedRecords.filter(item => item.fields.kind?.startsWith("__")) : [];
   let records = tool === "screenplay" ? loadedRecords.filter(item => !item.fields.kind?.startsWith("__")) : loadedRecords;
-  const screenplayScenes = tool === "shots" || tool === "storyboards" ? (await toolRecords(userId, project.id, "screenplay")).filter(item => item.fields.kind === "Scene Heading") : [];
-  const projectShots = tool === "storyboards" ? await toolRecords(userId, project.id, "shots") : [];
+  const screenplayScenes = tool === "shots" || tool === "storyboards" ? sceneRecords.filter(item => item.fields.kind === "Scene Heading") : [];
+  const projectShots = shotRecords;
   if (!isCurrent()) return;
   let selected: string | undefined = records[0]?.id;
   let activeScene = "all";
@@ -600,7 +602,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>1</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
-      editor.querySelector("#script-start")?.addEventListener("click", () => { void addItem(); });
+      editor.querySelector("#script-start")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item. Check your connection and try again.";}); });
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
       wireScheduleBoard();
@@ -1145,7 +1147,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         if (changedRecord?.id && (pendingRecordIds.has(changedRecord.id) || (changedRecord.revision || 0) <= (savedRevisions.get(changedRecord.id) || 0))) return;
         if (tool === "screenplay" && screenplaySaveTimer) { status.textContent = "A collaborator edited this project. Your current text remains in place until it saves."; return; }
         if (tool === "notes" && (noteSaveTimer || editor.contains(document.activeElement))) { status.textContent = "A collaborator edited this project. Your open document stays in place; reopen it to refresh."; return; }
-        const refreshed = await toolRecords(userId, project.id, tool);
+        let refreshed: ToolRecord[];try{refreshed=await toolRecords(userId,project.id,tool);}catch{if(isCurrent())status.textContent="Could not refresh collaborator changes. Reopen this tool to retry.";return;}if(!isCurrent())return;
         supportRecords = tool === "screenplay" ? refreshed.filter(item => item.fields.kind?.startsWith("__")) : [];
         records = tool === "screenplay" ? refreshed.filter(item => !item.fields.kind?.startsWith("__")) : refreshed;
         if (tool === "screenplay") settingsRecord = supportRecords.find(item => item.fields.kind === "__settings") || settingsRecord;
@@ -1191,5 +1193,5 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     else if (tool === "shots" || tool === "storyboards") editor.querySelector<HTMLInputElement>(`[data-visual-field="title"][data-record-id="${record.id}"]`)?.focus();
     else editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
   };
-  document.querySelector("#tool-add")?.addEventListener("click", () => { void addItem(); });
+  document.querySelector("#tool-add")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item. Check your connection and try again.";}); });
 }

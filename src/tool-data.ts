@@ -1,3 +1,4 @@
+import { withTimeout } from "./request-state.js";
 export type ToolName = "screenplay" | "notes" | "shots" | "storyboards" | "schedule" | "locations" | "call-sheets";
 export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number };
 
@@ -47,7 +48,7 @@ function database(): Promise<IDBDatabase> {
       store.createIndex("scope", "scope");
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error("Browser storage is blocked. Close other PreFrame tabs and retry."));
   });
 }
 
@@ -64,7 +65,8 @@ function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) 
 }
 
 const scope = (ownerId: string, projectId: string, tool: ToolName) => `${ownerId}:${projectId}:${tool}`;
-export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
+export function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> { return withTimeout(loadToolRecords(ownerId, projectId, tool), 20_000); }
+async function loadToolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
   const local = (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
   const supabase = await cloudFor(ownerId);

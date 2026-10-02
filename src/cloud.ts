@@ -1,3 +1,4 @@
+import { boundedFetch } from "./request-state.js";
 import { createClient } from "@supabase/supabase-js";
 import type { Identity, Project } from "./domain.js";
 import type { ProjectRepository, WriteResult } from "./repository.js";
@@ -11,7 +12,7 @@ const config = window.__PREFRAME_PUBLIC_CONFIG__ || {
 export const supabase = createClient(
   config.url,
   config.publishableKey,
-  { auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } },
+  { auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }, global: { fetch: boundedFetch } },
 );
 
 type ProjectRow = {
@@ -36,7 +37,8 @@ export class CloudProjectRepository implements ProjectRepository {
     return { profile: { id: profile.id, displayName: profile.display_name || "Member", tier: profile.tier }, isAdmin: isAdmin === true };
   }
   async listProjects(): Promise<Project[]> {
-    await supabase.rpc("purge_expired_projects");
+    // Housekeeping must not delay a readable project list.
+    void Promise.resolve(supabase.rpc("purge_expired_projects")).catch(() => {});
     const { data, error } = await supabase.from("projects")
       .select("id,owner_id,title,timezone,revision,updated_at,cover_path")
       .is("archived_at", null).order("updated_at", { ascending: false });
@@ -73,7 +75,8 @@ export class CloudProjectRepository implements ProjectRepository {
     if (error) throw new Error(error.message);
   }
   async recycleBin(): Promise<(Project & { purgeAfter: string })[]> {
-    await supabase.rpc("purge_expired_projects");
+    // Housekeeping must not delay a readable project list.
+    void Promise.resolve(supabase.rpc("purge_expired_projects")).catch(() => {});
     const identity = await this.getIdentity();
     if (!identity) return [];
     const { data, error } = await supabase.from("projects").select("id,owner_id,title,timezone,revision,updated_at,cover_path,purge_after").eq("owner_id", identity.profile.id).not("archived_at", "is", null).order("archived_at", { ascending: false });
