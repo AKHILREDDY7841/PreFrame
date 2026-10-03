@@ -33,3 +33,26 @@ test('lost sync acknowledgements compare content without relying on JSON key ord
  assert.equal(sameToolContent(base,{...base,revision:5,fields:{checklist:'One',richBody:'original-rich',body:'Original'}}),true);
  assert.equal(sameToolContent(base,change({richBody:'different'})),false);
 });
+
+import {combineToolRecords} from '../dist/tool-data.js';
+test('cached notes retain saved documents and overlay only the latest pending draft',()=>{
+ const saved = {...base, fields:{...base.fields}};
+ const draft = change({body:'Unsynced text',richBody:'unsynced-rich'});
+ const other = {...base,id:'second',title:'Other document'};
+ const result = combineToolRecords([saved,other],[draft]);
+ assert.equal(result.length,2);
+ assert.equal(result[0].fields.body,'Unsynced text');
+ assert.equal(result[0].pendingSync,true);
+ assert.equal(result[1].title,'Other document');
+ assert.equal(combineToolRecords([saved],[])[0].fields.body,'Original');
+});
+
+import {recoverToolLoad} from '../dist/tool-data.js';
+test('a hung cloud read opens the saved notes instead of a blank tool',async()=>{
+ const recovered = await recoverToolLoad(()=>new Promise(()=>{}),[base],[],'notes',5);
+ assert.equal(recovered.cached,true); assert.equal(recovered[0].title,'Plan');
+});
+test('loading failures do not masquerade as an empty document list or hide access errors',async()=>{
+ await assert.rejects(recoverToolLoad(async()=>{throw new Error('permission denied');},[base],[],'notes',5),/denied/);
+ await assert.rejects(recoverToolLoad(()=>new Promise(()=>{}),[],[],'notes',5),/timed out/);
+});

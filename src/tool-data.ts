@@ -4,7 +4,7 @@ export type ToolRecord = { id: string; title: string; fields: Record<string, str
 
 const DB = "preframe-tools-v1";
 const STORE = "records";
-type Stored = ToolRecord & { key: string; scope: string; tool: ToolName };
+type Stored = ToolRecord & { key: string; scope: string; tool: ToolName; cloudSaved?: boolean };
 type CloudRow = { id: string; title: string; fields: Record<string, string>; created_at: string; updated_at: string; revision: number };
 
 // Preview and signed-out sessions remain local. Signed-in workspaces use the
@@ -22,6 +22,7 @@ async function cloudFor(ownerId: string) {
 const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision });
 
 async function signedToolImages(ownerId: string, records: ToolRecord[]) {
+  if (!records.some(record => record.fields.imagePath)) return records;
   const supabase = await cloudFor(ownerId);
   if (!supabase) return records;
   return Promise.all(records.map(async record => {
@@ -69,14 +70,40 @@ function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) 
 }
 
 const scope = (ownerId: string, projectId: string, tool: ToolName) => `${ownerId}:${projectId}:${tool}`;
-export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
-  const drafts = tool === 'notes' ? await pendingNotes(ownerId, projectId) : [];
-  let records: ToolRecord[];
-  try { records = await withTimeout(loadToolRecords(ownerId, projectId, tool), 20_000); }
-  catch (error) { if (!drafts.length) throw error; records = await transaction('readonly', store => store.index('scope').getAll(scope(ownerId, projectId, tool))) as Stored[]; }
+export type ToolRecordList = ToolRecord[] & { cached?: boolean };
+export function combineToolRecords(records: ToolRecord[], drafts: ToolRecord[]): ToolRecordList {
   const combined = new Map(records.map(record => [record.id, record]));
   drafts.forEach(draft => combined.set(draft.id, {...draft, pendingSync: true}));
   return [...combined.values()];
+}
+export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecordList> {
+  const local = await transaction('readonly', store => store.index('scope').getAll(scope(ownerId, projectId, tool))) as Stored[];
+  const drafts = tool === 'notes' ? await pendingNotes(ownerId, projectId) : [];
+  const result = await recoverToolLoad(() => loadToolRecords(ownerId, projectId, tool), local, drafts, tool);
+  return Object.assign(combineToolRecords(result, tool === 'notes' ? await pendingNotes(ownerId, projectId) : drafts), {cached: result.cached});
+}
+export async function recoverToolLoad(load: () => Promise<ToolRecord[]>, local: ToolRecord[], drafts: ToolRecord[], tool: ToolName, timeout = tool === 'notes' && (local.length || drafts.length) ? 6_000 : 20_000): Promise<ToolRecordList> {
+  let records: ToolRecord[];
+  let cached = false;
+  try { records = await withTimeout(retryTransient(load), timeout); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Project access was checked by the workspace gate. Only recover from a
+    // connection failure; never hide permission or session errors as offline.
+    if (tool !== 'notes' || !(local.length || drafts.length) || !/abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(message)) throw error;
+    records = local; cached = true;
+  }
+  const result = combineToolRecords(records, drafts);
+  result.cached = cached;
+  return result;
+}
+async function cacheNotes(ownerId: string, projectId: string, records: ToolRecord[]) {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite'), store = tx.objectStore(STORE);
+    for (const record of records) store.put({...record, cloudSaved: true, key: `${scope(ownerId, projectId, 'notes')}:${record.id}`, scope: scope(ownerId, projectId, 'notes'), tool: 'notes'});
+    tx.oncomplete = () => {db.close(); resolve();}; tx.onerror = () => {db.close(); reject(tx.error);};
+  });
 }
 async function loadToolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
@@ -86,16 +113,20 @@ async function loadToolRecords(ownerId: string, projectId: string, tool: ToolNam
   const { data, error } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
   if (error) throw new Error(error.message);
   const remote = (data || []).map(row => fromCloud(row as CloudRow));
-  if (!remote.length && local.length) {
+  const legacy = local.filter(record => !(records as Stored[]).find(row => row.id === record.id)?.cloudSaved);
+  if (!remote.length && legacy.length) {
     // One-time, non-destructive migration of this user's existing browser data.
-    for (const record of local) {
+    for (const record of legacy) {
       const { error: uploadError } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: 0 });
       if (uploadError && uploadError.code !== "40001") throw new Error(uploadError.message);
     }
     const { data: uploaded, error: reloadError } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
     if (reloadError) throw new Error(reloadError.message);
-    return signedToolImages(ownerId, (uploaded || []).map(row => fromCloud(row as CloudRow)));
+    const migrated = (uploaded || []).map(row => fromCloud(row as CloudRow));
+    if (tool === 'notes') await cacheNotes(ownerId, projectId, migrated);
+    return signedToolImages(ownerId, migrated);
   }
+  if (tool === 'notes') await cacheNotes(ownerId, projectId, remote);
   return signedToolImages(ownerId, remote);
 }
 let draftQueue = Promise.resolve();
@@ -132,7 +163,7 @@ export class ToolRecordConflict extends Error {
 export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedRevision = 0): Promise<number> {
   if (tool === 'notes') await saveNoteDraft(ownerId, projectId, {...record, revision: expectedRevision});
   const supabase = await cloudFor(ownerId);
-  const item: Stored = { ...record, revision: supabase ? expectedRevision : expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
+  const item: Stored = { ...record, cloudSaved: Boolean(supabase), revision: supabase ? expectedRevision : expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
   const db = await database();
   const localRevision = await new Promise<number>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
@@ -166,7 +197,7 @@ export async function saveToolRecord(ownerId: string, projectId: string, tool: T
   const remote = fromCloud(acknowledged as CloudRow);
   // Keep the offline copy aligned to the authoritative cloud revision.
   const syncDb = await database();
-  await new Promise<void>((resolve, reject) => { const tx = syncDb.transaction(STORE, "readwrite"); tx.objectStore(STORE).put({ ...remote, key: item.key, scope: item.scope, tool }); tx.oncomplete = () => { syncDb.close(); resolve(); }; tx.onerror = () => { syncDb.close(); reject(tx.error); }; });
+  await new Promise<void>((resolve, reject) => { const tx = syncDb.transaction(STORE, "readwrite"); tx.objectStore(STORE).put({ ...remote, cloudSaved: true, key: item.key, scope: item.scope, tool }); tx.oncomplete = () => { syncDb.close(); resolve(); }; tx.onerror = () => { syncDb.close(); reject(tx.error); }; });
   if (tool === 'notes') await clearSavedDraft(ownerId, projectId, {...record, revision: expectedRevision}, remote.revision);
   return remote.revision || localRevision;
 }

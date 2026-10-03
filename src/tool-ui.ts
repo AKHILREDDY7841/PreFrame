@@ -1199,7 +1199,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
   };
   renderList(); renderEditor();
-  status.textContent = userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+  status.textContent = loadedRecords.cached ? "Showing saved local documents · Cloud connection unavailable. Edits are kept locally and will retry sync." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
   if (tool === "screenplay" && records.length && !supportRecords.some(item => item.fields.kind === "__history")) {
     void saveSnapshot("__history", "Initial saved version").catch(() => { status.textContent = "History could not be saved"; });
   }

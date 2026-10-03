@@ -204,10 +204,10 @@ async function render(){
       if(p&&r.page==="workspace"&&r.tool!=="import"&&r.tool!=="members"&&(!premiumTools.has(r.tool||"")||premium)){
         if(version!==renderVersion)return;
         const workspaceNode=root.querySelector(".tool-page");
-        void withTimeout(mountToolWorkspace(p,r.tool!,preview?"local-demo-owner":currentUserId,premium)).catch(()=>{
+        void withTimeout(mountToolWorkspace(p,r.tool!,preview?"local-demo-owner":currentUserId,premium)).catch(error=>{
           if(version!==renderVersion||!workspaceNode?.isConnected)return;
           const editor=workspaceNode.querySelector("#tool-editor");
-          if(editor){editor.innerHTML='<section class="data-error" role="alert"><h2>Could not load this tool</h2><p>Check your connection and project access, then try again.</p><button data-retry-page>Retry</button></section>';editor.querySelector("button")?.addEventListener("click",()=>void render());}
+          if(editor){editor.innerHTML=`<section class="data-error" role="alert"><h2>Could not load this tool</h2><p>${esc(error instanceof Error ? error.message : "Check your connection and project access, then try again.")}</p><p>Your saved documents have not been deleted.</p><button data-retry-page>Retry</button></section>`;editor.querySelector("button")?.addEventListener("click",()=>void render());}
           const status=workspaceNode.querySelector("#tool-status");if(status)status.textContent="Not loaded";
         });
       }
