@@ -1,6 +1,6 @@
-import { withTimeout } from "./request-state.js";
+import { withTimeout, retryTransient } from "./request-state.js";
 export type ToolName = "screenplay" | "notes" | "shots" | "storyboards" | "schedule" | "locations" | "call-sheets";
-export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number };
+export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number; pendingSync?: boolean };
 
 const DB = "preframe-tools-v1";
 const STORE = "records";
@@ -12,8 +12,12 @@ type CloudRow = { id: string; title: string; fields: Record<string, string>; cre
 async function cloudFor(ownerId: string) {
   if (ownerId === "local-demo-owner" || ownerId === "anonymous") return null;
   const { supabase } = await import("./cloud.js");
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id === ownerId ? supabase : null;
+  // Session is already checked by the workspace gate; RLS verifies each write.
+  // Avoid an extra network/auth-lock request on every autosave.
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (session?.user.id !== ownerId) throw new Error('Sign in again to sync your locally saved changes.');
+  return supabase;
 }
 const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision });
 
@@ -65,7 +69,15 @@ function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) 
 }
 
 const scope = (ownerId: string, projectId: string, tool: ToolName) => `${ownerId}:${projectId}:${tool}`;
-export function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> { return withTimeout(loadToolRecords(ownerId, projectId, tool), 20_000); }
+export async function toolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
+  const drafts = tool === 'notes' ? await pendingNotes(ownerId, projectId) : [];
+  let records: ToolRecord[];
+  try { records = await withTimeout(loadToolRecords(ownerId, projectId, tool), 20_000); }
+  catch (error) { if (!drafts.length) throw error; records = await transaction('readonly', store => store.index('scope').getAll(scope(ownerId, projectId, tool))) as Stored[]; }
+  const combined = new Map(records.map(record => [record.id, record]));
+  drafts.forEach(draft => combined.set(draft.id, {...draft, pendingSync: true}));
+  return [...combined.values()];
+}
 async function loadToolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
   const local = (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
@@ -86,10 +98,39 @@ async function loadToolRecords(ownerId: string, projectId: string, tool: ToolNam
   }
   return signedToolImages(ownerId, remote);
 }
+let draftQueue = Promise.resolve();
+export function saveNoteDraft(ownerId: string, projectId: string, record: ToolRecord): Promise<void> {
+  const snapshot = structuredClone(record);
+  const task = draftQueue.then(async () => {
+    await transaction('readwrite', store => store.put({...snapshot, key: `${scope(ownerId, projectId, 'notes')}:draft:${snapshot.id}`, scope: `${scope(ownerId, projectId, 'notes')}:draft`, tool: 'notes'}));
+  });
+  draftQueue = task.catch(() => {});
+  return task;
+}
+async function pendingNotes(ownerId: string, projectId: string): Promise<ToolRecord[]> {
+  const rows = await transaction('readonly', store => store.index('scope').getAll(`${scope(ownerId, projectId, 'notes')}:draft`));
+  return (rows as Stored[]).map(({id,title,fields,revision,createdAt,updatedAt}) => ({id,title,fields,revision,createdAt,updatedAt}));
+}
+export async function clearSavedDraft(ownerId: string, projectId: string, record: ToolRecord, acknowledgedRevision?: number) {
+  await draftQueue;
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite'), store = tx.objectStore(STORE);
+    const key = `${scope(ownerId, projectId, 'notes')}:draft:${record.id}`;
+    const request = store.get(key);
+    request.onsuccess = () => { const draft = request.result as Stored | undefined; if (draft && sameToolContent(draft, record)) store.delete(key);
+      else if (draft && acknowledgedRevision !== undefined && draft.revision === record.revision) store.put({...draft, revision: acknowledgedRevision}); };
+    tx.oncomplete = () => {db.close(); resolve();}; tx.onerror = () => {db.close(); reject(tx.error);};
+  });
+}
+export function sameToolContent(left: ToolRecord, right: ToolRecord): boolean {
+  return left.title === right.title && [...new Set([...Object.keys(left.fields), ...Object.keys(right.fields)])].every(key => (left.fields[key] || '') === (right.fields[key] || ''));
+}
 export class ToolRecordConflict extends Error {
   constructor(public current: ToolRecord) { super('Another tab saved a newer version of this item.'); }
 }
 export async function saveToolRecord(ownerId: string, projectId: string, tool: ToolName, record: ToolRecord, expectedRevision = 0): Promise<number> {
+  if (tool === 'notes') await saveNoteDraft(ownerId, projectId, {...record, revision: expectedRevision});
   const supabase = await cloudFor(ownerId);
   const item: Stored = { ...record, revision: supabase ? expectedRevision : expectedRevision + 1, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool };
   const db = await database();
@@ -107,20 +148,30 @@ export async function saveToolRecord(ownerId: string, projectId: string, tool: T
     tx.onabort = () => { db.close(); reject(conflict ? new ToolRecordConflict(conflict) : tx.error || new Error("Could not save this item on this device.")); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
-  if (!supabase) return localRevision;
-  const { data, error } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: expectedRevision });
+  if (!supabase) { if (tool === 'notes') await clearSavedDraft(ownerId, projectId, {...record, revision: expectedRevision}, localRevision); return localRevision; }
+  const {data, error} = await retryTransient(async () => {
+    const result = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: expectedRevision });
+    if (result.error && /abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(result.error.message)) throw new Error(result.error.message);
+    return result;
+  });
+  let acknowledged = data;
   if (error?.code === '40001') {
     const {data: current} = await supabase.from('project_tool_records').select('id,title,fields,created_at,updated_at,revision').eq('project_id', projectId).eq('tool', tool).eq('id', record.id).single();
-    if (current) throw new ToolRecordConflict(fromCloud(current as CloudRow));
+    if (current) {
+      if (sameToolContent(record, fromCloud(current as CloudRow))) acknowledged = current;
+      else throw new ToolRecordConflict(fromCloud(current as CloudRow));
+    }
   }
-  if (error || !data) throw new Error(error?.message || "Could not sync this record");
-  const remote = fromCloud(data as CloudRow);
+  if (!acknowledged) throw new Error(error?.message || "Could not sync this record");
+  const remote = fromCloud(acknowledged as CloudRow);
   // Keep the offline copy aligned to the authoritative cloud revision.
   const syncDb = await database();
   await new Promise<void>((resolve, reject) => { const tx = syncDb.transaction(STORE, "readwrite"); tx.objectStore(STORE).put({ ...remote, key: item.key, scope: item.scope, tool }); tx.oncomplete = () => { syncDb.close(); resolve(); }; tx.onerror = () => { syncDb.close(); reject(tx.error); }; });
+  if (tool === 'notes') await clearSavedDraft(ownerId, projectId, {...record, revision: expectedRevision}, remote.revision);
   return remote.revision || localRevision;
 }
 export async function deleteToolRecord(ownerId: string, projectId: string, tool: ToolName, id: string): Promise<void> {
+  if (tool === 'notes') { await draftQueue; await transaction('readwrite', store => store.delete(`${scope(ownerId, projectId, tool)}:draft:${id}`)); }
   await transaction("readwrite", store => store.delete(`${scope(ownerId, projectId, tool)}:${id}`));
   const supabase = await cloudFor(ownerId);
   if (!supabase) return;

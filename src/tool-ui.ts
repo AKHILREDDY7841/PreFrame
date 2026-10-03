@@ -4,7 +4,7 @@ import { studioDocument } from "./studio-documents.js";
 import { studioShell } from "./studio-shell.js";
 import { findScriptText, orderBetween, revisionSceneLabels, sceneIdAt, snapshotScript, wordCount, type ScriptSnapshot } from "./screenplay-engine.js";
 import type { Project } from "./domain.js";
-import { deleteToolRecord, newToolRecord, saveToolRecord, ToolRecordConflict, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
+import { deleteToolRecord, newToolRecord, saveToolRecord, saveNoteDraft, clearSavedDraft, ToolRecordConflict, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
 
 let activeToolChannel: { unsubscribe: () => unknown } | null = null;
 let activeSceneScrollCleanup: (() => void) | null = null;
@@ -268,6 +268,9 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   let saveQueue = Promise.resolve();
   let screenplaySaveTimer: ReturnType<typeof setTimeout> | undefined;
   let flushScreenplaySave = () => {};
+  const noteJobs = new Map<string, Promise<void>>();
+  const noteDirty = new Set<string>();
+  let noteRetryTimer: ReturnType<typeof setTimeout> | undefined;
   let noteSaveTimer: ReturnType<typeof setTimeout> | undefined;
   let flushNoteSave = () => {};
   let contextMode: "find" | "title" | "history" | "drafts" | "revision" | "read" | "breakdown" | null = null;
@@ -323,12 +326,14 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     if (kind === "__history") lastHistoryAt = Date.now();
     return entry;
   };
-  const persist = (record: ToolRecord) => {
+  const persist = (record: ToolRecord): Promise<void> => {
+    if (tool === 'notes' && noteJobs.has(record.id)) { noteDirty.add(record.id); return noteJobs.get(record.id)!; }
     status.textContent = "Saving on this device…";
     const snapshot = { ...record, fields: { ...record.fields }, updatedAt: new Date().toISOString() };
     const pendingId = record.id;
     pendingRecordIds.set(pendingId, (pendingRecordIds.get(pendingId) || 0) + 1);
     const task = saveQueue.then(async () => {
+      if (tool === 'notes') Object.assign(snapshot, {...record, fields: {...record.fields}, updatedAt: new Date().toISOString()});
       if (snapshot.id !== record.id) { snapshot.id = record.id; snapshot.title = record.title; snapshot.createdAt = record.createdAt; }
       let revision: number;
       let recovery = false;
@@ -346,6 +351,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         } else {
           const copy = newToolRecord(`${snapshot.title} — recovered copy`, snapshot.fields);
           revision = await saveToolRecord(userId, project.id, tool, copy, 0);
+          await clearSavedDraft(userId, project.id, record);
           const oldId = record.id;
           records.push(structuredClone(error.current));
           snapshot.id = copy.id; snapshot.title = copy.title; snapshot.createdAt = copy.createdAt;
@@ -366,15 +372,31 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       savedCopies.set(record.id, structuredClone({...snapshot, revision}));
       savedRevisions.set(record.id, revision);
       record.revision = revision;
+      record.pendingSync = tool === 'notes' && (noteDirty.has(pendingId) || Boolean(noteSaveTimer));
       record.updatedAt = snapshot.updatedAt;
-      if (isCurrent()) status.textContent = recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+      if (isCurrent()) status.textContent = tool === "notes" && (noteDirty.has(pendingId) || noteSaveTimer) ? "Saved locally · Syncing latest changes…" : recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
       if (tool === "screenplay" && !snapshot.fields.kind?.startsWith("__") && Date.now() - lastHistoryAt > 15 * 60_000) {
         lastHistoryAt = Date.now();
         void saveSnapshot("__history", new Date().toLocaleString()).catch(() => { lastHistoryAt = 0; });
       }
     });
     saveQueue = task.catch(() => {});
-    return task.finally(() => { const remaining = (pendingRecordIds.get(pendingId) || 1) - 1; if (remaining) pendingRecordIds.set(pendingId, remaining); else pendingRecordIds.delete(pendingId); });
+    const finished = task.finally(() => { const remaining = (pendingRecordIds.get(pendingId) || 1) - 1; if (remaining) pendingRecordIds.set(pendingId, remaining); else pendingRecordIds.delete(pendingId); });
+    if (tool === 'notes') {
+      noteJobs.set(pendingId, finished);
+      void finished.then(() => {
+        noteJobs.delete(pendingId);
+        if (noteDirty.delete(pendingId)) void persist(record).catch(() => {});
+      }, error => {
+        noteJobs.delete(pendingId);
+        record.pendingSync = true;
+        if (error instanceof ToolRecordConflict || !/abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(error.message)) return;
+        if (isCurrent()) status.textContent = 'Saved locally · Connection interrupted. Retrying sync…';
+        clearTimeout(noteRetryTimer);
+        noteRetryTimer = setTimeout(() => { if (isCurrent()) for (const pending of records.filter(item => item.pendingSync && !noteJobs.has(item.id))) void persist(pending).catch(() => {}); }, 2000);
+      });
+    }
+    return finished;
   };
   document.querySelector("#studio-print")?.addEventListener("click", () => {
     const paper = document.querySelector<HTMLElement>("#tool-print-document")!;
@@ -816,7 +838,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         clearTimeout(noteSaveTimer);
         noteSaveTimer = undefined;
         renderList();
-        void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; });
+        void persist(record).catch(error => { if (isCurrent()) status.textContent = userId !== "local-demo-owner" && /abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(error.message) ? "Saved locally · Cloud sync pending. Reconnecting…" : `Save needs attention: ${error.message}`; });
       };
     }
     if (tool === "shots") form.querySelectorAll<HTMLSelectElement>("[data-shot-choice]").forEach(choice => choice.addEventListener("change", () => {
@@ -865,9 +887,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       if (tool === "notes") {
-        if (noteSaveTimer) clearTimeout(noteSaveTimer);
-        noteSaveTimer = setTimeout(flushNoteSave, 550);
-        status.textContent = "Saving…";
+        // Persist a recovery draft without waiting for the network or a pause.
+        record.pendingSync = true;
+        void saveNoteDraft(userId, project.id, {...record, fields: {...record.fields}, revision: savedRevisions.get(record.id) || 0}).catch(error => { if (isCurrent()) status.textContent = `Local save failed: ${error.message}`; });
+        if (!noteSaveTimer) noteSaveTimer = setTimeout(flushNoteSave, 200);
+        status.textContent = "Saving locally…";
         return;
       }
       renderList();
@@ -1235,5 +1259,14 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     else if (tool === "shots" || tool === "storyboards") editor.querySelector<HTMLInputElement>(`[data-visual-field="title"][data-record-id="${record.id}"]`)?.focus();
     else editor.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
   };
+  if (tool === 'notes') {
+    for (const record of records.filter(item => item.pendingSync)) void persist(record).catch(() => {});
+    const retryNotes = () => { if (!isCurrent()) return; for (const record of records.filter(item => item.pendingSync)) void persist(record).catch(() => {}); };
+    const flushLeaving = () => flushNoteSave();
+    window.addEventListener('online', retryNotes);
+    window.addEventListener('pagehide', flushLeaving);
+    const cleanup = new MutationObserver(() => { if (!isCurrent()) { flushNoteSave(); clearTimeout(noteRetryTimer); window.removeEventListener('online', retryNotes); window.removeEventListener('pagehide', flushLeaving); cleanup.disconnect(); } });
+    cleanup.observe(document.getElementById('app')!, {childList:true, subtree:true});
+  }
   document.querySelector("#tool-add")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item. Check your connection and try again.";}); });
 }

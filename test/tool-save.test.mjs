@@ -17,3 +17,19 @@ test('plain and rich document bodies cannot be combined from different versions'
  assert.equal(mergeToolEdits(base,change({body:'Mine'}),change({richBody:'their-rich'},2)),null);
  assert.equal(mergeToolEdits(base,{...base,title:'Mine'},{...base,title:'Theirs',revision:2}),null);
 });
+
+import {retryTransient} from '../dist/request-state.js';
+import {sameToolContent} from '../dist/tool-data.js';
+test('aborted sync retries and acknowledges a later successful attempt',async()=>{
+ let attempts=0;
+ assert.equal(await retryTransient(async()=>{if(++attempts<3)throw new Error('AbortError: signal is aborted');return 42;},[0,0]),42);
+ assert.equal(attempts,3);
+});
+test('sync never retries permission failures or retries transient failures forever',async()=>{
+ let attempts=0; await assert.rejects(retryTransient(async()=>{attempts++;throw new Error('permission denied');},[0,0]),/denied/);assert.equal(attempts,1);
+ attempts=0;await assert.rejects(retryTransient(async()=>{attempts++;throw new Error('network disconnected');},[0,0]),/network/);assert.equal(attempts,3);
+});
+test('lost sync acknowledgements compare content without relying on JSON key order',()=>{
+ assert.equal(sameToolContent(base,{...base,revision:5,fields:{checklist:'One',richBody:'original-rich',body:'Original'}}),true);
+ assert.equal(sameToolContent(base,change({richBody:'different'})),false);
+});
