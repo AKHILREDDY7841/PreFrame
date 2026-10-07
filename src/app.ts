@@ -127,8 +127,9 @@ async function refreshAdminMetrics(){
  const update=(selector:string,value:string)=>{const element=panel.querySelector(selector);if(element&&panel.isConnected)element.textContent=value;};
  if(!currentUserId||preview){panel.dataset.state="unavailable";panel.querySelectorAll("b").forEach(element=>element.textContent="Unavailable");const note=document.querySelector(".admin-metric-note");if(note)note.textContent="Local preview. Sign in as an admin to see database metrics. Remaining storage quota is unavailable.";return;}
  panel.dataset.loading="true";let result;try{result=await withTimeout(supabase.rpc("admin_workspace_metrics"));}catch{result={data:null,error:true};}
+ delete panel.dataset.loading;
  if(!panel.isConnected)return;
- const {data,error}=result;const metric=Array.isArray(data)?data[0]:data;
+ const {data,error}=result;const metric=parseAdminMetrics(data);
  if(error||!metric){panel.dataset.state=panel.dataset.updatedAt?"stale":"unavailable";if(!panel.dataset.updatedAt)panel.querySelectorAll("b").forEach(element=>element.textContent="Unavailable");const note=document.querySelector(".admin-metric-update");if(note)note.textContent=panel.dataset.updatedAt?"Refresh failed. Showing last confirmed values; retry to update.":"Metrics could not load. Retry to update.";return;}
  panel.dataset.state="success";panel.dataset.updatedAt=new Date().toISOString();const updated=document.querySelector(".admin-metric-update");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString()+" · refreshes every minute";
  update("[data-admin-storage]",formatStorage(metric.storageBytes));update("[data-admin-active]",String(metric.activeUsers));update("[data-admin-registered]",String(metric.registeredUsers));
