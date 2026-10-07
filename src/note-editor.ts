@@ -195,5 +195,5 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
   toolbar.querySelectorAll<HTMLButtonElement>('[data-history]').forEach(button=>button.onclick=()=>{(button.dataset.history==='undo'?undo:redo)(view.state,view.dispatch);view.focus();});
   // Destroy detached editors so navigating between documents releases listeners.
   const observer=new MutationObserver(()=>{if(!host.isConnected){cancelAnimationFrame(overlayFrame); window.removeEventListener('resize', scheduleOverlays); view.destroy();observer.disconnect();}});
-  observer.observe(document.getElementById('app')!,{childList:true,subtree:true});
+  observer.observe(form.ownerDocument.body,{childList:true,subtree:true});
 }

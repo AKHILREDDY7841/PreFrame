@@ -1,6 +1,6 @@
 import { withTimeout, retryTransient } from "./request-state.js";
 export type ToolName = "screenplay" | "notes" | "shots" | "storyboards" | "schedule" | "locations" | "call-sheets";
-export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number; pendingSync?: boolean };
+export type ToolRecord = { id: string; title: string; fields: Record<string, string>; createdAt: string; updatedAt: string; revision?: number; loaded?:boolean; pendingSync?: boolean };
 
 const DB = "preframe-tools-v1";
 const STORE = "records";
@@ -19,7 +19,7 @@ async function cloudFor(ownerId: string) {
   if (session?.user.id !== ownerId) throw new Error('Sign in again to sync your locally saved changes.');
   return supabase;
 }
-const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision });
+const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision, loaded: Boolean(row.fields) });
 
 async function signedToolImages(ownerId: string, records: ToolRecord[]) {
   if (!records.some(record => record.fields.imagePath)) return records;
@@ -82,7 +82,7 @@ export async function toolRecords(ownerId: string, projectId: string, tool: Tool
   const result = await recoverToolLoad(() => loadToolRecords(ownerId, projectId, tool), local, drafts, tool);
   return Object.assign(combineToolRecords(result, tool === 'notes' ? await pendingNotes(ownerId, projectId) : drafts), {cached: result.cached});
 }
-export async function recoverToolLoad(load: () => Promise<ToolRecord[]>, local: ToolRecord[], drafts: ToolRecord[], tool: ToolName, timeout = tool === 'notes' && (local.length || drafts.length) ? 6_000 : 20_000): Promise<ToolRecordList> {
+export async function recoverToolLoad(load: () => Promise<ToolRecord[]>, local: ToolRecord[], drafts: ToolRecord[], tool: ToolName, timeout = (local.length || drafts.length) ? 6_000 : 20_000): Promise<ToolRecordList> {
   let records: ToolRecord[];
   let cached = false;
   try { records = await withTimeout(retryTransient(load), timeout); }
@@ -90,44 +90,42 @@ export async function recoverToolLoad(load: () => Promise<ToolRecord[]>, local: 
     const message = error instanceof Error ? error.message : String(error);
     // Project access was checked by the workspace gate. Only recover from a
     // connection failure; never hide permission or session errors as offline.
-    if (tool !== 'notes' || !(local.length || drafts.length) || !/abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(message)) throw error;
+    if (!(local.length || drafts.length) || !/abort|network|fetch|timeout|timed out|connection|502|503|504/i.test(message)) throw error;
     records = local; cached = true;
   }
   const result = combineToolRecords(records, drafts);
   result.cached = cached;
   return result;
 }
-async function cacheNotes(ownerId: string, projectId: string, records: ToolRecord[]) {
+async function cacheRecords(ownerId: string, projectId: string, tool:ToolName, records: ToolRecord[]) {
   const db = await database();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite'), store = tx.objectStore(STORE);
-    for (const record of records) store.put({...record, cloudSaved: true, key: `${scope(ownerId, projectId, 'notes')}:${record.id}`, scope: scope(ownerId, projectId, 'notes'), tool: 'notes'});
+    for (const record of records.filter(record=>record.loaded!==false)) store.put({...record, cloudSaved: true, key: `${scope(ownerId, projectId, tool)}:${record.id}`, scope: scope(ownerId, projectId, tool), tool});
     tx.oncomplete = () => {db.close(); resolve();}; tx.onerror = () => {db.close(); reject(tx.error);};
   });
+}
+export function resolveNoteMetadata(metadata:ToolRecord,cached?:ToolRecord&{cloudSaved?:boolean}):ToolRecord{
+ return cached?.cloudSaved&&cached.loaded!==false&&cached.revision===metadata.revision?{...metadata,fields:cached.fields,loaded:true}:metadata;
 }
 async function loadToolRecords(ownerId: string, projectId: string, tool: ToolName): Promise<ToolRecord[]> {
   const records = await transaction("readonly", store => store.index("scope").getAll(scope(ownerId, projectId, tool)));
   const local = (records as Stored[]).map(({ id, title, fields, createdAt, updatedAt, revision }) => ({ id, title, fields, createdAt, updatedAt, revision: revision || 0 }));
   const supabase = await cloudFor(ownerId);
   if (!supabase) return local;
-  const { data, error } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
+  const { data, error } = await supabase.from("project_tool_records").select(tool==='notes'?"id,title,created_at,updated_at,revision":"id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
   if (error) throw new Error(error.message);
-  const remote = (data || []).map(row => fromCloud(row as CloudRow));
-  const legacy = local.filter(record => !(records as Stored[]).find(row => row.id === record.id)?.cloudSaved);
-  if (!remote.length && legacy.length) {
-    // One-time, non-destructive migration of this user's existing browser data.
-    for (const record of legacy) {
-      const { error: uploadError } = await supabase.rpc("save_project_tool_record", { p_project: projectId, p_tool: tool, p_record: record.id, p_title: record.title, p_fields: record.fields, p_expected_revision: 0 });
-      if (uploadError && uploadError.code !== "40001") throw new Error(uploadError.message);
-    }
-    const { data: uploaded, error: reloadError } = await supabase.from("project_tool_records").select("id,title,fields,created_at,updated_at,revision").eq("project_id", projectId).eq("tool", tool).order("updated_at", { ascending: true });
-    if (reloadError) throw new Error(reloadError.message);
-    const migrated = (uploaded || []).map(row => fromCloud(row as CloudRow));
-    if (tool === 'notes') await cacheNotes(ownerId, projectId, migrated);
-    return signedToolImages(ownerId, migrated);
-  }
-  if (tool === 'notes') await cacheNotes(ownerId, projectId, remote);
+  const remote = (data || []).map(row => {const metadata=fromCloud(row as unknown as CloudRow);const cached=(records as Stored[]).find(item=>item.id===metadata.id&&item.cloudSaved&&item.revision===metadata.revision&&item.loaded!==false);return tool==='notes'?resolveNoteMetadata(metadata,cached):metadata;});
+  await cacheRecords(ownerId, projectId, tool, remote);
   return signedToolImages(ownerId, remote);
+}
+const noteLoads=new Map<string,Promise<ToolRecord>>();
+export async function loadNoteRecord(ownerId:string,projectId:string,id:string):Promise<ToolRecord>{
+ const key=scope(ownerId,projectId,'notes')+':'+id;if(noteLoads.has(key))return noteLoads.get(key)!;
+ const request=(async()=>{const client=await cloudFor(ownerId);if(!client)throw new Error('Document is unavailable on this device');
+ const {data,error}=await withTimeout(client.from('project_tool_records').select('id,title,fields,created_at,updated_at,revision').eq('project_id',projectId).eq('tool','notes').eq('id',id).single(),20000);
+ if(error||!data)throw new Error(error?.message||'Could not load this document');const record=fromCloud(data as CloudRow);await cacheRecords(ownerId,projectId,'notes',[record]);return record;
+ })();noteLoads.set(key,request);try{return await request;}finally{noteLoads.delete(key);}
 }
 let draftQueue = Promise.resolve();
 export function saveNoteDraft(ownerId: string, projectId: string, record: ToolRecord): Promise<void> {
@@ -215,7 +213,7 @@ export function newToolRecord(title: string, fields: Record<string, string> = {}
 }
 const tools: ToolName[] = ["screenplay", "notes", "shots", "storyboards", "schedule", "locations", "call-sheets"];
 export async function exportToolData(ownerId: string, projectId: string): Promise<string> {
-  const records = Object.fromEntries(await Promise.all(tools.map(async tool => [tool, await toolRecords(ownerId, projectId, tool)])));
+  const records = Object.fromEntries(await Promise.all(tools.map(async tool => {const rows=await toolRecords(ownerId,projectId,tool);return [tool,tool==='notes'?await Promise.all(rows.map(row=>row.loaded===false?loadNoteRecord(ownerId,projectId,row.id):row)):rows];})));
   return JSON.stringify({ format: "preframe-local-tools-v1", projectId, exportedAt: new Date().toISOString(), records }, null, 2);
 }
 export async function restoreToolData(ownerId: string, projectId: string, source: string): Promise<number> {

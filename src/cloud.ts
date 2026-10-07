@@ -25,16 +25,22 @@ const asProject = (row: ProjectRow): Project => ({
   ...(row.cover_path ? { coverPath: row.cover_path } : {}),
 });
 
+let identityCache:{owner:string;value:Identity;expires:number}|undefined;
+const identityRequests=new Map<string,Promise<Identity|null>>();
+export function clearIdentityCache(){identityCache=undefined;identityRequests.clear();}
 export class CloudProjectRepository implements ProjectRepository {
   async getIdentity(): Promise<Identity | null> {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return null;
-    const { data: profile, error: profileError } = await supabase.from("profiles")
-      .select("id,display_name,tier").eq("id", user.id).single();
-    if (profileError || !profile) throw new Error(profileError?.message || "Profile unavailable");
-    const { data: isAdmin, error: adminError } = await supabase.rpc("is_admin");
-    if (adminError) throw new Error(adminError.message);
-    return { profile: { id: profile.id, displayName: profile.display_name || "Member", tier: profile.tier }, isAdmin: isAdmin === true };
+    const {data:{session},error}=await supabase.auth.getSession();if(error)throw error;if(!session)return null;
+    const owner=session.user.id;if(identityCache?.owner===owner&&identityCache.expires>Date.now())return identityCache.value;
+    if(identityRequests.has(owner))return identityRequests.get(owner)!;
+    const request=(async()=>{
+      // These queries are authenticated and checked by database RLS/functions.
+      const [profileResult,adminResult]=await Promise.all([supabase.from('profiles').select('id,display_name,tier').eq('id',owner).single(),supabase.rpc('is_admin')]);
+      if(profileResult.error||!profileResult.data)throw new Error(profileResult.error?.message||'Profile unavailable');
+      if(adminResult.error)throw new Error(adminResult.error.message);
+      const profile=profileResult.data;const identity:Identity={profile:{id:profile.id,displayName:profile.display_name||'Member',tier:profile.tier},isAdmin:adminResult.data===true};
+      identityCache={owner,value:identity,expires:Date.now()+30000};return identity;
+    })();identityRequests.set(owner,request);try{return await request;}finally{identityRequests.delete(owner);}
   }
   async listProjects(): Promise<Project[]> {
     // Housekeeping must not delay a readable project list.

@@ -1,8 +1,9 @@
+import {parseAdminMetrics} from './admin-metrics.js';
 import { withTimeout } from "./request-state.js";
 import { backControl, backFallback, internalApplicationUrl, pushRoute } from "./app-navigation.js";
 import { collaborationPage, wireCollaboration } from "./collaboration-page.js";
 import { LocalProjectRepository } from "./local-repository.js";
-import { CloudProjectRepository, supabase } from "./cloud.js";
+import { CloudProjectRepository, supabase, clearIdentityCache } from "./cloud.js";
 import { parseRoute } from "./routes.js";
 import type { Project, SyncState } from "./domain.js";
 import { DurableProjectSync } from "./durable-sync.js";
@@ -71,10 +72,13 @@ async function home(view: "home" | "projects" | "shared" | "settings" | "recycle
     const loadActivity=async()=>{
       if(!activity)return;activity.innerHTML='<h2>Recent Activity</h2><p role="status">Loading activity…</p>';
       try{
-        const batches=await Promise.all(projects.flatMap(project=>tools.filter(([, , tool])=>tool!=="calendar").map(async([,label,tool])=>{
-          const rows=await toolRecords(owner,project.id,tool as ToolName);
-          return rows.filter(row=>!row.fields.kind?.startsWith("__")).map(row=>({title:row.title||label,detail:`${label} · ${project.title}`,href:href(`/app/projects/${project.id}/${tool}`),occurredAt:row.updatedAt}));
-        })));
+        let batches:Parameters<typeof renderHomePage>[0]['recentActivity'][]=[];
+        if(preview){batches=await Promise.all(projects.flatMap(project=>tools.filter(([, , tool])=>tool!=='calendar').map(async([,label,tool])=>{
+          const rows=await toolRecords(owner,project.id,tool as ToolName);return rows.filter(row=>!row.fields.kind?.startsWith('__')).map(row=>({title:row.title||label,detail:label+' · '+project.title,href:href('/app/projects/'+project.id+'/'+tool),occurredAt:row.updatedAt}));
+        })));}else if(projects.length){
+          const {data,error}=await supabase.from('project_tool_records').select('id,project_id,tool,title,updated_at').in('project_id',projects.map(project=>project.id)).or('fields->>kind.is.null,fields->>kind.not.in.(__settings,__history,__draft,__breakdown,__custom,__archived)').order('updated_at',{ascending:false}).limit(5);if(error)throw error;
+          batches=[(data||[]).map(row=>({title:row.title,detail:(tools.find(([, , tool])=>tool===row.tool)?.[1]||row.tool)+' · '+(projects.find(project=>project.id===row.project_id)?.title||''),href:href('/app/projects/'+row.project_id+'/'+row.tool),occurredAt:row.updated_at}))];
+        }
         const rows=[...projects.map(project=>({title:project.title,detail:"Project updated",href:href(`/app/projects/${project.id}`),occurredAt:project.updatedAt})),...batches.flat()].sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,5);
         update(activity,".home-activity",[],rows);
       }catch{fail(activity,"Recent Activity",()=>void loadActivity());}
@@ -119,15 +123,15 @@ function formatStorage(bytes: unknown) {
   return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 async function refreshAdminMetrics(){
- const panel=document.querySelector<HTMLElement>(".admin-live-metrics");if(!panel||accountBadge!=="Admin")return;
+ const panel=document.querySelector<HTMLElement>(".admin-live-metrics");if(!panel||accountBadge!=="Admin"||panel.dataset.loading==="true")return;
  const update=(selector:string,value:string)=>{const element=panel.querySelector(selector);if(element&&panel.isConnected)element.textContent=value;};
  if(!currentUserId||preview){panel.dataset.state="unavailable";panel.querySelectorAll("b").forEach(element=>element.textContent="Unavailable");const note=document.querySelector(".admin-metric-note");if(note)note.textContent="Local preview. Sign in as an admin to see database metrics. Remaining storage quota is unavailable.";return;}
- let result;try{result=await withTimeout(supabase.rpc("admin_workspace_metrics"));}catch{result={data:null,error:true};}
+ panel.dataset.loading="true";let result;try{result=await withTimeout(supabase.rpc("admin_workspace_metrics"));}catch{result={data:null,error:true};}
  if(!panel.isConnected)return;
  const {data,error}=result;const metric=Array.isArray(data)?data[0]:data;
- if(error||!metric){panel.dataset.state="unavailable";panel.querySelectorAll("b").forEach(element=>element.textContent="Unavailable");return;}
- panel.dataset.state="success";
- update("[data-admin-storage]",formatStorage(metric.storage_bytes));update("[data-admin-active]",String(metric.active_users??0));update("[data-admin-registered]",String(metric.registered_users??0));
+ if(error||!metric){panel.dataset.state=panel.dataset.updatedAt?"stale":"unavailable";if(!panel.dataset.updatedAt)panel.querySelectorAll("b").forEach(element=>element.textContent="Unavailable");const note=document.querySelector(".admin-metric-update");if(note)note.textContent=panel.dataset.updatedAt?"Refresh failed. Showing last confirmed values; retry to update.":"Metrics could not load. Retry to update.";return;}
+ panel.dataset.state="success";panel.dataset.updatedAt=new Date().toISOString();const updated=document.querySelector(".admin-metric-update");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString()+" · refreshes every minute";
+ update("[data-admin-storage]",formatStorage(metric.storageBytes));update("[data-admin-active]",String(metric.activeUsers));update("[data-admin-registered]",String(metric.registeredUsers));
 }
 function wireAdminMetrics() {
   if (adminMetricsTimer) clearInterval(adminMetricsTimer);
@@ -389,6 +393,6 @@ async function wire(p:Project){
   });
 }
 addEventListener("popstate",render);
-supabase.auth.onAuthStateChange((event,session)=>{queueMicrotask(()=>{if(event==="SIGNED_IN"&&session){const pending=sessionStorage.getItem("preframe-oauth-pending");sessionStorage.removeItem("preframe-oauth-pending");if(pending||parseRoute(location.pathname).page==="auth"){history.replaceState({},"",href("/app"));render();}}else if(event==="SIGNED_OUT"&&!preview){history.replaceState({},"",href("/"));render();}});});
+supabase.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_OUT"||event==="USER_UPDATED"||event==="TOKEN_REFRESHED")clearIdentityCache();setTimeout(()=>{if(event==="SIGNED_IN"&&session){const pending=sessionStorage.getItem("preframe-oauth-pending");sessionStorage.removeItem("preframe-oauth-pending");if(pending||parseRoute(location.pathname).page==="auth"){history.replaceState({},"",href("/app"));render();}}else if(event==="SIGNED_OUT"&&!preview){history.replaceState({},"",href("/"));render();}});});
 addEventListener("storage",event=>{if(!preview&&event.key?.startsWith("sb-"))render();});
 render();

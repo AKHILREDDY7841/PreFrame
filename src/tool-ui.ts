@@ -4,7 +4,7 @@ import { studioDocument } from "./studio-documents.js";
 import { studioShell } from "./studio-shell.js";
 import { findScriptText, orderBetween, revisionSceneLabels, sceneIdAt, snapshotScript, wordCount, type ScriptSnapshot } from "./screenplay-engine.js";
 import type { Project } from "./domain.js";
-import { deleteToolRecord, newToolRecord, saveToolRecord, saveNoteDraft, clearSavedDraft, ToolRecordConflict, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
+import { deleteToolRecord, loadNoteRecord, newToolRecord, saveToolRecord, saveNoteDraft, clearSavedDraft, ToolRecordConflict, storeToolImage, toolRecords, type ToolName, type ToolRecord } from "./tool-data.js";
 
 let activeToolChannel: { unsubscribe: () => unknown } | null = null;
 let activeSceneScrollCleanup: (() => void) | null = null;
@@ -403,7 +403,8 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     paper.innerHTML = `<h1>${escapeHtml(project.title)} — ${labels[tool]}</h1>${ordered().map(item => `<section class="studio-print-record"><h2>${escapeHtml(item.title)}</h2>${safeImage(item.fields.image || '') ? `<img src="${escapeHtml(safeImage(item.fields.image))}" alt="Reference image">` : ''}${fields[tool].filter(field => field.key !== 'image').map(field => `<p><b>${escapeHtml(field.label)}:</b> ${escapeHtml(item.fields[field.key] || '—')}</p>`).join('')}</section>`).join('')}`;
     print();
   });
-  document.querySelector("#studio-export")?.addEventListener("click", () => {
+  document.querySelector("#studio-export")?.addEventListener("click", async () => {
+    if(tool==='notes'){try{for(const record of records)if(record.loaded===false)Object.assign(record,await loadNoteRecord(userId,project.id,record.id));}catch(error){status.textContent=error instanceof Error?error.message:'Could not export documents';return;}}
     const columns = [{ key: "title", label: "Title" }, ...fields[tool]];
     for (const key of new Set(records.flatMap(item => Object.keys(item.fields)))) if (!columns.some(column => column.key === key) && !["order", "richBody", ...(tool === "notes" ? ["folder", "tags"] : [])].includes(key)) columns.push({ key, label: key });
     const csv = (value: string) => '"' + (/^[=+@\-]/.test(value) ? "'" : "") + value.replaceAll('"', '""') + '"';
@@ -477,6 +478,10 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
   };
   const renderEditor = () => {
     const record = records.find(item => item.id === selected);
+    if(tool==='notes'&&record?.loaded===false){
+      const opening=record.id;editor.innerHTML='<p role="status">Opening document…</p>';
+      void loadNoteRecord(userId,project.id,opening).then(loaded=>{if(!isCurrent())return;const target=records.find(item=>item.id===opening);if(target&&target.loaded===false){Object.assign(target,loaded);savedRevisions.set(opening,loaded.revision||0);savedCopies.set(opening,structuredClone(loaded));}if(selected===opening)renderEditor();}).catch(error=>{if(!isCurrent()||selected!==opening)return;editor.innerHTML='<section class="data-error" role="alert"><h2>Could not open this document</h2><p></p><button type="button">Retry</button></section>';editor.querySelector('p')!.textContent=error.message;editor.querySelector('button')!.onclick=renderEditor;});return;
+    }
     const scheduleBoard = () => {
       const items = ordered();
       const progress = scheduleProgress(items);
@@ -1266,7 +1271,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     window.addEventListener('online', retryNotes);
     window.addEventListener('pagehide', flushLeaving);
     const cleanup = new MutationObserver(() => { if (!isCurrent()) { flushNoteSave(); clearTimeout(noteRetryTimer); window.removeEventListener('online', retryNotes); window.removeEventListener('pagehide', flushLeaving); cleanup.disconnect(); } });
-    cleanup.observe(document.getElementById('app')!, {childList:true, subtree:true});
+    cleanup.observe(editor.ownerDocument.body, {childList:true, subtree:true});
   }
   document.querySelector("#tool-add")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item. Check your connection and try again.";}); });
 }
