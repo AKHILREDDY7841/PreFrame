@@ -1,3 +1,4 @@
+import {syncTelemetryTransition} from './private-workspace.js';
 import { mergeToolEdits } from './tool-save.js';
 import { mountNoteEditor } from "./note-editor.js";
 import { studioDocument } from "./studio-documents.js";
@@ -211,7 +212,9 @@ export function toolWorkspace(project: Project, name: string, href: (path: strin
   return studioShell(project.id, project.title, name, label, content, href);
 }
 
-export async function mountToolWorkspace(project: Project, name: string, userId: string, premium = false): Promise<void> {
+export async function mountToolWorkspace(project: Project, name: string, userId: string, premium = true): Promise<void> {
+  const syncFailures=new Set<string>();
+  const reportSync=(id:string,failed:boolean)=>{const kind=syncTelemetryTransition(syncFailures.has(id),failed);if(failed)syncFailures.add(id);else syncFailures.delete(id);if(kind)window.dispatchEvent(new CustomEvent('preframe-sync-status',{detail:{kind,message:name+(failed?' sync failed; local recovery retained':' sync resumed')}}));};
   const tool: ToolName = name === "calendar" ? "schedule" : name as ToolName;
   const list = document.querySelector<HTMLElement>("#tool-list")!;
   const editor = document.querySelector<HTMLElement>("#tool-editor")!;
@@ -382,6 +385,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
     saveQueue = task.catch(() => {});
     const finished = task.finally(() => { const remaining = (pendingRecordIds.get(pendingId) || 1) - 1; if (remaining) pendingRecordIds.set(pendingId, remaining); else pendingRecordIds.delete(pendingId); });
+    void finished.then(()=>reportSync(pendingId,false),()=>reportSync(pendingId,true));
     if (tool === 'notes') {
       noteJobs.set(pendingId, finished);
       void finished.then(() => {
@@ -1216,15 +1220,15 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         if (changed !== tool || !isCurrent()) return;
         const changedRecord = payload.new as { id?: string; revision?: number } | undefined;
         if (changedRecord?.id && (pendingRecordIds.has(changedRecord.id) || (changedRecord.revision || 0) <= (savedRevisions.get(changedRecord.id) || 0))) return;
-        if (tool === "screenplay" && screenplaySaveTimer) { status.textContent = "A collaborator edited this project. Your current text remains in place until it saves."; return; }
-        if (tool === "notes" && (noteSaveTimer || editor.contains(document.activeElement))) { status.textContent = "A collaborator edited this project. Your open document stays in place; reopen it to refresh."; return; }
-        let refreshed: ToolRecord[];try{refreshed=await toolRecords(userId,project.id,tool);}catch{if(isCurrent())status.textContent="Could not refresh collaborator changes. Reopen this tool to retry.";return;}if(!isCurrent())return;
+        if (tool === "screenplay" && screenplaySaveTimer) { status.textContent = "Another tab edited this project. Your current text remains in place until it saves."; return; }
+        if (tool === "notes" && (noteSaveTimer || editor.contains(document.activeElement))) { status.textContent = "Another tab edited this project. Your open document stays in place; reopen it to refresh."; return; }
+        let refreshed: ToolRecord[];try{refreshed=await toolRecords(userId,project.id,tool);}catch{if(isCurrent())status.textContent="Could not refresh changes from another tab. Reopen this tool to retry.";return;}if(!isCurrent())return;
         supportRecords = tool === "screenplay" ? refreshed.filter(item => item.fields.kind?.startsWith("__")) : [];
         records = tool === "screenplay" ? refreshed.filter(item => !item.fields.kind?.startsWith("__")) : refreshed;
         if (tool === "screenplay") settingsRecord = supportRecords.find(item => item.fields.kind === "__settings") || settingsRecord;
         savedRevisions.clear(); savedCopies.clear(); refreshed.forEach(item => { savedRevisions.set(item.id, item.revision || 0); savedCopies.set(item.id, structuredClone(item)); });
         if (!selected || !records.some(item => item.id === selected)) selected = records[0]?.id;
-        renderList(); renderEditor(); status.textContent = "Updated by a collaborator";
+        renderList(); renderEditor(); status.textContent = "Updated in another tab";
       }).subscribe();
     });
   }
@@ -1234,7 +1238,6 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     requestAnimationFrame(() => editor.querySelector<HTMLElement>(".schedule-field-chooser")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
   const addItem = async () => {
-    if (!premium && (tool === "shots" || tool === "storyboards") && records.length >= 50) { status.textContent = "The Free plan allows 50 active shots and 50 storyboard frames."; return; }
     const prior = records.find(item => item.id === selected);
     const nextKind = records.length === 0 ? "Scene Heading" : prior?.fields.kind === "Character" ? "Dialogue" : "Action";
     const nextDay = String(Math.max(0, ...records.map(item => Number(item.fields.day) || 0)) + 1);

@@ -4,7 +4,7 @@ import { parseRoute } from "../dist/routes.js";
 import { isImmutableSceneId, sampleProject } from "../dist/domain.js";
 
 test("recognizes each supported route layer", () => {
-  assert.equal(parseRoute("/").page, "landing");
+  assert.equal(parseRoute("/").page, "auth");
   assert.equal(parseRoute("/auth").page, "auth");
   assert.equal(parseRoute("/app").page, "home");
   assert.equal(parseRoute("/app/import").page, "import");

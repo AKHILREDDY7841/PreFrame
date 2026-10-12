@@ -36,6 +36,7 @@ export class CloudProjectRepository implements ProjectRepository {
     const request=(async()=>{
       // These queries are authenticated and checked by database RLS/functions.
       const [profileResult,adminResult]=await Promise.all([supabase.from('profiles').select('id,display_name,tier').eq('id',owner).single(),supabase.rpc('is_admin')]);
+      if(!adminResult.error&&adminResult.data!==true)return null;
       if(profileResult.error||!profileResult.data)throw new Error(profileResult.error?.message||'Profile unavailable');
       if(adminResult.error)throw new Error(adminResult.error.message);
       const profile=profileResult.data;const identity:Identity={profile:{id:profile.id,displayName:profile.display_name||'Member',tier:profile.tier},isAdmin:adminResult.data===true};
@@ -44,7 +45,6 @@ export class CloudProjectRepository implements ProjectRepository {
   }
   async listProjects(): Promise<Project[]> {
     // Housekeeping must not delay a readable project list.
-    void Promise.resolve(supabase.rpc("purge_expired_projects")).catch(() => {});
     const { data, error } = await supabase.from("projects")
       .select("id,owner_id,title,timezone,revision,updated_at,cover_path")
       .is("archived_at", null).order("updated_at", { ascending: false });
@@ -117,32 +117,5 @@ export class CloudProjectRepository implements ProjectRepository {
       throw new Error(error?.message || "Could not save project cover");
     }
     return this.withCoverUrl(asProject(data as ProjectRow));
-  }
-  async inviteEditor(projectId: string, email: string): Promise<void> {
-    const { error } = await supabase.rpc("invite_editor", { p_project: projectId, p_email: email });
-    if (error) throw new Error(error.message);
-  }
-  async invitations(): Promise<{ id: string; project_id: string; invitee_email: string }[]> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.email) return [];
-    const { data, error } = await supabase.from("project_invitations")
-      .select("id,project_id,invitee_email").eq("invitee_email", user.email.toLowerCase())
-      .is("accepted_at", null).is("revoked_at", null);
-    if (error) throw new Error(error.message);
-    return data || [];
-  }
-  async acceptInvitation(id: string): Promise<string> {
-    const { data, error } = await supabase.rpc("accept_project_invitation", { p_invitation: id });
-    if (error || !data) throw new Error(error?.message || "Invitation unavailable");
-    return data as string;
-  }
-  async members(projectId: string): Promise<{ user_id: string; role: string }[]> {
-    const { data, error } = await supabase.from("project_members").select("user_id,role").eq("project_id", projectId);
-    if (error) throw new Error(error.message);
-    return data || [];
-  }
-  async removeEditor(projectId: string, userId: string): Promise<void> {
-    const { error } = await supabase.rpc("remove_editor", { p_project: projectId, p_user: userId });
-    if (error) throw new Error(error.message);
   }
 }
