@@ -7,7 +7,7 @@ import { parseRoute } from "./routes.js";
 import type { Project, SyncState } from "./domain.js";
 import { DurableProjectSync } from "./durable-sync.js";
 import { exportProject, previewBackup } from "./backup.js";
-import { renderHomePage } from "./home-content.js";
+import { renderHomePage, projectCard } from "./home-content.js";
 import { mountToolWorkspace, toolWorkspace } from "./tool-ui.js";
 import { clearToolData, exportToolData, newToolRecord, restoreToolData, saveToolRecord, toolRecords, type ToolName } from "./tool-data.js";
 import { classifyScreenplayLines } from "./script-import.js";
@@ -105,11 +105,12 @@ let metricsChannel:ReturnType<typeof supabase.channel>|undefined;
 let metricsDebounce:ReturnType<typeof setTimeout>|undefined;
 async function refreshAdminMetrics(){
  const panel=document.querySelector<HTMLElement>('.admin-live-metrics');if(!panel||accountBadge!=='Admin'||panel.dataset.loading==='true')return;
- if(preview){panel.querySelectorAll('b').forEach(item=>item.textContent='Local only');const note=document.querySelector('.admin-metric-note');if(note)note.textContent='Local test workspace. No live database values are simulated.';return;}
+ if(preview){panel.querySelectorAll('b').forEach(item=>item.textContent='Local only');const note=document.querySelector('.admin-metric-note');if(note)note.textContent='Local test workspace. No live database values are simulated.';const connection=document.querySelector('.admin-metric-connection');if(connection)connection.textContent='Local preview; cloud monitoring disabled';return;}
  panel.dataset.loading='true';try{
   const {data,error}=await withTimeout(supabase.rpc('private_workspace_state'),10000);if(error)throw new Error(error.message);const metric=parsePrivateWorkspaceState(data);if(!metric||metric.ownerId!==currentUserId)throw new Error('Dashboard response could not be verified');if(!panel.isConnected)return;
   if(Number(localStorage.getItem('preframe-reset-epoch:'+currentUserId))!==metric.resetEpoch){workspaceBootstrapped=false;await enforceResetEpoch(currentUserId,metric.resetEpoch);workspaceBootstrapped=true;void render();return;}
   const update=(key:string,value:string)=>{const node=panel.querySelector('[data-admin-'+key+']');if(node)node.textContent=value;};
+  const count=document.querySelector('[data-admin-projects]');if(count)count.textContent=String(metric.projects);
   update('storage',formatStorage(metric.storageBytes));update('database',formatStorage(metric.databaseBytes));update('records',String(metric.records));update('active',String(metric.activeUsers));update('registered',String(metric.registeredUsers));update('objects',String(metric.objects));panel.dataset.state='success';panel.dataset.updatedAt=metric.sampledAt;
   const updated=document.querySelector('.admin-metric-update');if(updated)updated.textContent='Confirmed '+new Date(metric.sampledAt).toLocaleTimeString()+' · live changes and 15-second refresh';
   const activity=document.querySelector<HTMLElement>('[data-private-events]');if(activity){activity.replaceChildren();if(!metric.events.length){const empty=document.createElement('p');empty.textContent='No cloud activity yet. Create a project to begin.';activity.append(empty);}else{const list=document.createElement('ol');list.className='home-activity-list';for(const event of metric.events){const item=document.createElement('li'),title=document.createElement('strong'),detail=document.createElement('small');title.textContent=event.message;detail.textContent=event.kind+' · '+new Date(event.createdAt).toLocaleString();item.append(title,detail);list.append(item);}activity.append(list);}}
@@ -123,7 +124,8 @@ function wireAdminMetrics(){
  adminMetricsTimer=setInterval(()=>{if(document.visibilityState==='visible')void refreshAdminMetrics();},15000);
  if(preview)return;
  const changed=()=>{clearTimeout(metricsDebounce);metricsDebounce=setTimeout(()=>void refreshAdminMetrics(),750);};
- metricsChannel=supabase.channel('private-dashboard-'+currentUserId).on('postgres_changes',{event:'*',schema:'public',table:'private_workspace_events'},changed).on('postgres_changes',{event:'*',schema:'public',table:'audit_log'},changed).on('postgres_changes',{event:'*',schema:'public',table:'projects'},changed).subscribe(state=>{const note=document.querySelector('.admin-metric-connection');if(note)note.textContent=state==='SUBSCRIBED'?'Live connection active':'Live connection '+state.toLowerCase()+' · timed refresh remains available';});
+ const projectsChanged=()=>{changed();void cloudRepo.listProjects().then(projects=>{const grid=document.querySelector<HTMLElement>('.home-projects .home-project-grid');if(!grid)return;grid.innerHTML=projects.length?projects.slice(0,3).map((project,index)=>projectCard(project,href,index)).join(''):'<p class="home-empty-projects">Your studio is ready. Create a project to begin.</p>';wireRouteLinks(grid);document.querySelector<HTMLInputElement>('#project-search')?.dispatchEvent(new Event('input'));}).catch(()=>{});};
+ metricsChannel=supabase.channel('private-dashboard-'+currentUserId).on('postgres_changes',{event:'*',schema:'public',table:'private_workspace_events'},changed).on('postgres_changes',{event:'*',schema:'public',table:'audit_log'},changed).on('postgres_changes',{event:'*',schema:'public',table:'projects'},projectsChanged).subscribe(state=>{const note=document.querySelector('.admin-metric-connection');if(note)note.textContent=state==='SUBSCRIBED'?'Live connection active':'Live connection '+state.toLowerCase()+' · timed refresh remains available';});
 }
 let pendingHomeSections:(()=>void)|undefined;
 function wireRouteLinks(container:Element){

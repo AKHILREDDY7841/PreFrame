@@ -95,4 +95,17 @@ do $$ declare name text;begin
  foreach name in array array['private_workspace_events','projects','audit_log']loop
  if not exists(select 1 from pg_publication_tables where pubname='supabase_realtime'and schemaname='public'and tablename=name)then execute format('alter publication supabase_realtime add table public.%I',name);end if;end loop;
 end $$;
+create or replace function public.record_private_project_change()returns trigger language plpgsql security definer set search_path='' as $
+declare target uuid;label text;project uuid;owner uuid;kind text;
+begin
+ select user_id into target from public.owner_identity where singleton;
+ if TG_OP='DELETE'then project:=OLD.id;owner:=OLD.owner_id;label:=OLD.title;kind:='project_deleted';else project:=NEW.id;owner:=NEW.owner_id;label:=NEW.title;
+  if TG_OP='INSERT'then kind:='project_created';elsif OLD.archived_at is null and NEW.archived_at is not null then kind:='project_archived';elsif OLD.archived_at is not null and NEW.archived_at is null then kind:='project_restored';elsif OLD.title is distinct from NEW.title then kind:='project_renamed';elsif OLD.cover_path is distinct from NEW.cover_path then kind:='cover_changed';else return NEW;end if;
+ end if;
+ if owner=target then insert into public.private_workspace_events(owner_id,actor_id,project_id,kind,message)values(target,auth.uid(),project,kind,left(replace(kind,'_',' ')||': '||label,240));end if;
+ if TG_OP='DELETE'then return OLD;else return NEW;end if;
+end $;
+revoke all on function public.record_private_project_change()from public,anon,authenticated;
+drop trigger if exists preframe_private_project_activity on public.projects;
+create trigger preframe_private_project_activity after insert or update or delete on public.projects for each row execute function public.record_private_project_change();
 commit;
