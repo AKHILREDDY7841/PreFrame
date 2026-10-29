@@ -16,7 +16,7 @@ export function mountNoteEditor(form: HTMLFormElement, saved: string | undefined
     parseDOM: [{tag: 'img[src]', getAttrs: element => {
       const image = element as HTMLImageElement;
       const src = image.getAttribute('src') || '';
-      if (!/^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,)/i.test(src)) return false;
+      if (!/^(data:image\/(png|jpeg|webp|gif);base64,)/i.test(src)) return false;
       return {src, alt: image.alt, title: image.title || null, width: Math.min(100, Math.max(10, Number(image.dataset.noteWidth) || 100))};
     }}],
     toDOM: node => ['img', {src: node.attrs.src, alt: node.attrs.alt, title: node.attrs.title, 'data-note-width': node.attrs.width, style: `width:${Math.min(100, Math.max(10, Number(node.attrs.width) || 100))}%;max-width:100%;height:auto`}]

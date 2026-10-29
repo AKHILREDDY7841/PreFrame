@@ -377,7 +377,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       record.revision = revision;
       record.pendingSync = tool === 'notes' && (noteDirty.has(pendingId) || Boolean(noteSaveTimer));
       record.updatedAt = snapshot.updatedAt;
-      if (isCurrent()) status.textContent = tool === "notes" && (noteDirty.has(pendingId) || noteSaveTimer) ? "Saved locally · Syncing latest changes…" : recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+      if (isCurrent()) status.textContent = tool === "notes" && (noteDirty.has(pendingId) || noteSaveTimer) ? "Saved locally · Syncing latest changes…" : recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : true ? "Saved on this device" : "Synced to project cloud";
       if (tool === "screenplay" && !snapshot.fields.kind?.startsWith("__") && Date.now() - lastHistoryAt > 15 * 60_000) {
         lastHistoryAt = Date.now();
         void saveSnapshot("__history", new Date().toLocaleString()).catch(() => { lastHistoryAt = 0; });
@@ -1208,11 +1208,11 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     });
   };
   renderList(); renderEditor();
-  status.textContent = loadedRecords.cached ? "Showing saved local documents · Cloud connection unavailable. Edits are kept locally and will retry sync." : userId === "local-demo-owner" ? "Saved in this browser" : "Synced to project cloud";
+  status.textContent = loadedRecords.cached ? "Showing saved local documents · Cloud connection unavailable. Edits are kept locally and will retry sync." : true ? "Saved on this device" : "Synced to project cloud";
   if (tool === "screenplay" && records.length && !supportRecords.some(item => item.fields.kind === "__history")) {
     void saveSnapshot("__history", "Initial saved version").catch(() => { status.textContent = "History could not be saved"; });
   }
-  if (userId !== "local-demo-owner" && userId !== "anonymous") {
+  if (false) {
     void import("./cloud.js").then(({ supabase }) => {
       activeToolChannel?.unsubscribe();
       activeToolChannel = supabase.channel(`project-tools:${project.id}:${tool}`).on("postgres_changes", { event: "*", schema: "public", table: "project_tool_records", filter: `project_id=eq.${project.id}` }, async payload => {

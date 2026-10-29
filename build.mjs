@@ -1,35 +1,15 @@
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { build } from "esbuild";
-
-await mkdir("site", { recursive: true });
-await build({ entryPoints: ["src/app.ts"], bundle: true, platform: "browser", format: "esm", target: ["es2022"], outfile: "site/app.js" });
-await build({ entryPoints: ["src/prototype.ts"], bundle: true, platform: "browser", format: "esm", target: ["es2022"], outfile: "site/prototype.js" });
-const publicConfig = {
-  url: process.env.PREFRAME_SUPABASE_URL || "https://tvrhjgwegascckqsfmtk.supabase.co",
-  publishableKey: process.env.PREFRAME_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_kSXrGkTqoCj2G6GX0__YMA_I1HmXTwf",
-};
-const configScript = `<script>window.__PREFRAME_PUBLIC_CONFIG__=${JSON.stringify(publicConfig).replaceAll("<", "\\u003c")}</script>`;
-// GitHub Pages serves static assets through a CDN. Version every generated
-// asset reference so a visitor never receives a previous app bundle after a
-// successful deployment.
-const assetVersion = Date.now().toString(36);
-const html = (await readFile("index.html", "utf8"))
-  .replace("<head>", `<head><script>const preframeBase=document.createElement('base');preframeBase.href=location.pathname.startsWith('/PreFrame')?'/PreFrame/':'/';document.head.append(preframeBase)</script>`)
-  .replace("</head>", `${configScript}</head>`)
-  .replace('href="/styles.css"', `href="./styles.css?v=${assetVersion}"`)
-  .replace('href="/studio.css"', `href="./studio.css?v=${assetVersion}"`)
-  .replace("/dist/app.js", `./app.js?v=${assetVersion}`);
-await writeFile("site/index.html", html);
-await cp("styles.css", "site/styles.css");
-await cp("studio.css", "site/studio.css");
-const prototypeHtml = (await readFile("prototype.html", "utf8"))
-  .replace('href="/styles.css"', 'href="./prototype.css"')
-  .replace('href="/comment.css"', 'href="./comment.css"')
-  .replace(/\s*<script type="importmap">[\s\S]*?<\/script>/, "")
-  .replace('/dist/app.js', './prototype.js');
-await writeFile("site/prototype.html", prototypeHtml);
-await cp("prototype.css", "site/prototype.css");
-await cp("comment.css", "site/comment.css");
-await cp("assets", "site/assets", { recursive: true });
-await cp("node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs", "site/pdf.worker.mjs");
-await writeFile("site/404.html", `<!doctype html><meta charset="utf-8"><script>const b=location.pathname.startsWith('/PreFrame/')?'/PreFrame/':'/';location.replace(b+'?r='+encodeURIComponent(location.pathname.replace('/PreFrame','')+location.search+location.hash))</script>`);
+import {cp,mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
+import {build} from 'esbuild';
+import {deflateSync} from 'node:zlib';
+await mkdir('site/assets',{recursive:true});
+await build({entryPoints:['src/app.ts'],bundle:true,platform:'browser',format:'esm',target:['es2022'],outfile:'site/app.js'});
+const config={url:process.env.PREFRAME_SUPABASE_URL||'https://tvrhjgwegascckqsfmtk.supabase.co',publishableKey:process.env.PREFRAME_SUPABASE_PUBLISHABLE_KEY||'sb_publishable_kSXrGkTqoCj2G6GX0__YMA_I1HmXTwf'};
+const version=Date.now().toString(36);
+let html=(await readFile('index.html','utf8')).replace('<head>',`<head><script>const b=document.createElement('base');b.href=location.pathname.startsWith('/PreFrame')?'/PreFrame/':'/';document.head.append(b)</script>`).replace('</head>',`<script>window.__PREFRAME_PUBLIC_CONFIG__=${JSON.stringify(config)}</script></head>`).replace('href="/styles.css"','href="./styles.css"').replace('/dist/app.js','./app.js');
+await writeFile('site/index.html',html);await cp('styles.css','site/styles.css');await cp('studio.css','site/studio.css');await cp('manifest.webmanifest','site/manifest.webmanifest');await cp('assets','site/assets',{recursive:true});await cp('node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs','site/pdf.worker.mjs');
+function crc(bytes){let n=0xffffffff;for(const b of bytes){n^=b;for(let i=0;i<8;i++)n=(n>>>1)^((n&1)?0xedb88320:0);}return (n^0xffffffff)>>>0;}
+function chunk(type,data){const t=Buffer.from(type),size=Buffer.alloc(4),sum=Buffer.alloc(4);size.writeUInt32BE(data.length);sum.writeUInt32BE(crc(Buffer.concat([t,data])));return Buffer.concat([size,t,data,sum]);}
+for(const size of [192,512]){const rows=Buffer.alloc((size*4+1)*size);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const p=y*(size*4+1)+1+x*4;const line=(x>size*.22&&x<size*.78&&((y>size*.3&&y<size*.33)||(y>size*.67&&y<size*.7)))||(y>size*.22&&y<size*.78&&[.22,.36,.64,.76].some(k=>Math.abs(x-size*k)<size*.012));rows.set(line?[245,250,250,255]:[23,80,94,255],p);}const header=Buffer.alloc(13);header.writeUInt32BE(size,0);header.writeUInt32BE(size,4);header[8]=8;header[9]=6;await writeFile(`site/assets/app-${size}.png`,Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]));}
+const assets=['./','./index.html','./app.js','./styles.css','./studio.css','./manifest.webmanifest','./pdf.worker.mjs',...(await readdir('site/assets')).filter(n=>!n.includes('premium')).map(n=>'./assets/'+n)];
+await writeFile('site/sw.js',`const CACHE='preframe-device-${version}',ASSETS=${JSON.stringify(assets)};self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('preframe-device-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.origin!==self.location.origin||e.request.method!=='GET')return;if(e.request.mode==='navigate'){e.respondWith(caches.open(CACHE).then(c=>c.match('./index.html')).then(r=>r||fetch(e.request)));return;}e.respondWith(caches.match(e.request,{ignoreSearch:true}).then(r=>r||fetch(e.request)));});`);
+await writeFile('site/404.html',`<!doctype html><script>const b=location.pathname.startsWith('/PreFrame/')?'/PreFrame/':'/';location.replace(b+'?r='+encodeURIComponent(location.pathname.replace('/PreFrame','')+location.search))</script>`);

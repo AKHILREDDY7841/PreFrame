@@ -9,16 +9,7 @@ type CloudRow = { id: string; title: string; fields: Record<string, string>; cre
 
 // Preview and signed-out sessions remain local. Signed-in workspaces use the
 // project-scoped cloud table and keep a local copy for offline recovery.
-async function cloudFor(ownerId: string) {
-  if (ownerId === "local-demo-owner" || ownerId === "anonymous") return null;
-  const { supabase } = await import("./cloud.js");
-  // Session is already checked by the workspace gate; RLS verifies each write.
-  // Avoid an extra network/auth-lock request on every autosave.
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  if (session?.user.id !== ownerId) throw new Error('Sign in again to sync your locally saved changes.');
-  return supabase;
-}
+async function cloudFor(_ownerId: string): Promise<import('@supabase/supabase-js').SupabaseClient | null> { return null; }
 const fromCloud = (row: CloudRow): ToolRecord => ({ id: row.id, title: row.title, fields: row.fields || {}, createdAt: row.created_at, updatedAt: row.updated_at, revision: row.revision, loaded: Boolean(row.fields) });
 
 async function signedToolImages(ownerId: string, records: ToolRecord[]) {
@@ -166,15 +157,15 @@ export async function saveToolRecord(ownerId: string, projectId: string, tool: T
   const localRevision = await new Promise<number>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
-    let conflict: ToolRecord | undefined;
+    let conflict: ToolRecord | undefined; let limitReached=false;
     const request = store.get(item.key);
     request.onsuccess = () => {
       const current = request.result as Stored | undefined;
       if (!supabase && (current?.revision || 0) !== expectedRevision) { conflict = current; tx.abort(); return; }
-      store.put(item);
+      if(tool==='shots'&&!current){const count=store.index('scope').count(scope(ownerId,projectId,tool));count.onsuccess=()=>{if(count.result>=50){limitReached=true;tx.abort();return;}store.put(item);};}else store.put(item);
     };
     tx.oncomplete = () => { db.close(); resolve(item.revision!); };
-    tx.onabort = () => { db.close(); reject(conflict ? new ToolRecordConflict(conflict) : tx.error || new Error("Could not save this item on this device.")); };
+    tx.onabort = () => { db.close(); reject(limitReached ? new Error("This version supports up to 50 shots.") : conflict ? new ToolRecordConflict(conflict) : tx.error || new Error("Could not save this item on this device.")); };
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
   if (!supabase) { if (tool === 'notes') await clearSavedDraft(ownerId, projectId, {...record, revision: expectedRevision}, localRevision); return localRevision; }
