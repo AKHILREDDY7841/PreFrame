@@ -377,7 +377,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
       record.revision = revision;
       record.pendingSync = tool === 'notes' && (noteDirty.has(pendingId) || Boolean(noteSaveTimer));
       record.updatedAt = snapshot.updatedAt;
-      if (isCurrent()) status.textContent = tool === "notes" && (noteDirty.has(pendingId) || noteSaveTimer) ? "Saved locally · Syncing latest changes…" : recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : true ? "Saved on this device" : "Synced to project cloud";
+      if (isCurrent()) status.textContent = tool === "notes" && (noteDirty.has(pendingId) || noteSaveTimer) ? "Saving latest edits on this device…" : recovery ? "Saved your edits as a recovered copy. The other tab’s version is preserved." : true ? "Saved on this device" : "Synced to project cloud";
       if (tool === "screenplay" && !snapshot.fields.kind?.startsWith("__") && Date.now() - lastHistoryAt > 15 * 60_000) {
         lastHistoryAt = Date.now();
         void saveSnapshot("__history", new Date().toLocaleString()).catch(() => { lastHistoryAt = 0; });
@@ -670,7 +670,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
         return;
       }
       editor.innerHTML = tool === "screenplay" ? `<div class="script-empty-desk"><div class="script-page script-empty-page"><div class="script-page-header"><span>1</span></div><div class="script-empty-invitation"><h2>Start your screenplay</h2><p>Add a scene heading, then build your story one element at a time.</p><button type="button" id="script-start">Add first scene</button></div></div></div>` : `${name === "calendar" ? calendarMarkup() : ""}<div class="tool-empty-state"><span>${tool === "locations" ? "⌖" : tool === "call-sheets" ? "▣" : tool === "notes" ? "▤" : "✦"}</span><h2>${name === "calendar" ? "No shoot days yet." : tool === "locations" ? "Map out your locations" : tool === "call-sheets" ? "Prepare your first call sheet" : tool === "notes" ? "Your documents start here" : "Start with an idea."}</h2><p>${name === "calendar" ? "Add entries in the Schedule tab." : tool === "locations" ? "Record addresses, contacts, permits and access notes." : tool === "call-sheets" ? "Create a daily plan from your schedule." : tool === "notes" ? "Create a document, give it a name and begin writing." : "Create an item to begin."}</p>${name !== "calendar" ? `<button type="button" id="empty-tool-add">＋ ${tool === "notes" ? "New document" : tool === "locations" ? "New location" : tool === "call-sheets" ? "New call sheet" : "Add first item"}</button>` : ""}</div>`;
-      editor.querySelector("#script-start")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item. Check your connection and try again.";}); });
+      editor.querySelector("#script-start")?.addEventListener("click", () => { void addItem().catch(()=>{if(isCurrent())status.textContent="Could not save this item on this device. Check available storage and try again.";}); });
       editor.querySelector("#empty-tool-add")?.addEventListener("click", () => document.querySelector<HTMLButtonElement>("#tool-add")?.click());
       wireVisualBoard();
       wireScheduleBoard();
@@ -1238,6 +1238,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     requestAnimationFrame(() => editor.querySelector<HTMLElement>(".schedule-field-chooser")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
   const addItem = async () => {
+    if(tool === "shots" && records.length >= 50){status.textContent="This version supports up to 50 shots. Remove a shot to add another.";return;}
     const prior = records.find(item => item.id === selected);
     const nextKind = records.length === 0 ? "Scene Heading" : prior?.fields.kind === "Character" ? "Dialogue" : "Action";
     const nextDay = String(Math.max(0, ...records.map(item => Number(item.fields.day) || 0)) + 1);
@@ -1260,7 +1261,7 @@ export async function mountToolWorkspace(project: Project, name: string, userId:
     }
     records.push(record); selected = record.id;
     if (tool === "screenplay") { renderList(); renderEditor(); void persist(record).catch(error => { status.textContent = `Save failed: ${error.message}`; }); }
-    else { await persist(record); renderList(); renderEditor(); }
+    else { try{await persist(record);}catch(error){records=records.filter(item=>item.id!==record.id);selected=prior?.id||"";throw error;} renderList(); renderEditor(); }
     if (tool === "screenplay") editor.querySelector<HTMLTextAreaElement>('textarea[name="text"]')?.focus();
     else if (tool === "notes") { const titleInput = editor.querySelector<HTMLInputElement>('input[name="title"]'); titleInput?.focus(); titleInput?.select(); }
     else if (tool === "schedule") editor.querySelector<HTMLInputElement>(`[data-schedule-cell="day"][data-record-id="${record.id}"]`)?.focus();
